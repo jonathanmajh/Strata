@@ -84,6 +84,20 @@ option(STRATA_ENABLE_CUDA "Build the CUDA targets (Phase 2+)" OFF)
 # separate from STRATA_ENABLE_HIP (the wave32 RDNA backend): with it on, STRATA_ENABLE_CUDA is on and
 # STRATA_ENABLE_HIP stays off, so every "CUDA" branch of the tree is the one taken.
 option(STRATA_HIP_GFX906 "Build the CUDA targets for AMD gfx906 through HIP (wave64 compat layer)" OFF)
+option(STRATA_HIP_GFX900 "EXPERIMENTAL: build for AMD Vega 10 (gfx900, e.g. MI25 / Vega 56 / 64) on the wave64 compat layer (PR #2009 track)" OFF)
+if(STRATA_HIP_GFX900)
+  if(STRATA_ENABLE_HIP OR STRATA_HIP_GFX906)
+    message(FATAL_ERROR "STRATA_HIP_GFX900 is a separate opt-in backend; leave STRATA_ENABLE_HIP and STRATA_HIP_GFX906 off")
+  endif()
+  if(DEFINED CMAKE_HIP_ARCHITECTURES AND NOT CMAKE_HIP_ARCHITECTURES STREQUAL "gfx900")
+    message(FATAL_ERROR "STRATA_HIP_GFX900 requires CMAKE_HIP_ARCHITECTURES=gfx900")
+  endif()
+  set(CMAKE_HIP_ARCHITECTURES gfx900 CACHE STRING "HIP architectures" FORCE)
+  # Reuse the wave64 kernels and compat layer; gfx900's byte products are software dp4a, not a packed dot.
+  # The runtime libraries (rocBLAS/hipBLAS) must actually contain gfx900 support (AMD's TheRock gfx900 wheels).
+  set(STRATA_HIP_GFX906 ON)
+  message(STATUS "Strata: experimental gfx900 wave64 build (compat layer of the gfx906 build)")
+endif()
 if(STRATA_HIP_GFX906)
   if(STRATA_ENABLE_HIP)
     message(FATAL_ERROR "STRATA_HIP_GFX906 and STRATA_ENABLE_HIP are separate backends; enable only one")

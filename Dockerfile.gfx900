@@ -1,0 +1,109 @@
+# Strata, built FROM SOURCE for AMD Vega 10 (gfx900: Radeon Instinct MI25 16 GB, Vega 56 / 64), using the
+# experimental wave64 compat build (STRATA_HIP_GFX900). The ROCm toolchain comes from AMD's TheRock gfx900
+# wheels, the same source setup.sh installs (docs/AMD_GFX900.md). Nothing is compiled on the user's side.
+#
+# Build example (either docker, or buildah/skopeo as packaging/build_gfx900_layers.sh does):
+#
+#   docker build -t strata:gfx900 -f Dockerfile.gfx900 . \
+#     --build-arg ROCM_WHEEL=7.14.0a20260612 --build-arg STRATA_COMMIT=$(git rev-parse --short HEAD)
+#
+# Run it (the model lives in /data on a volume; two MI25s: GPUS=0,1):
+#
+#   docker run -d --device=/dev/kfd --device=/dev/dri --group-add video --ipc=host --ulimit memlock=-1 \
+#     --shm-size 2g --stop-timeout 120 -p 127.0.0.1:8080:8080 -v strata-data:/data \
+#     -e MODEL=IQ1_M -e FAMILY=coder -e CONTEXT=65536 -e KV=int8 -e GPUS=0,1 strata:gfx900
+#
+# Tuned launch with the engine arguments of the 2x MI25 preset (docs/AMD_GFX900.md):
+#
+#   docker run --rm -it --device=/dev/kfd --device=/dev/dri --group-add video --ipc=host --ulimit memlock=-1 \
+#     -v strata-data:/data strata:gfx900 \
+#     strata launch --no-tui --family coder --model IQ1_M --context 65536 --kv int8 \
+#       --layer-split 27 --pipeline-windows 2 --trim-stage-weights --gpu 0,1
+#
+# Plain legacy-builder features only (no heredocs, no --mount), like the repo's other Dockerfiles.
+
+ARG ROCM_INDEX=https://rocm.nightlies.amd.com/v2/gfx900/
+ARG ROCM_WHEEL=7.14.0a20260612
+ARG BASE_IMAGE=ubuntu:24.04
+
+# ---- 1. compile the engine and make its component package
+FROM ${BASE_IMAGE} AS engine-build
+ARG ROCM_INDEX
+ARG ROCM_WHEEL
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential ca-certificates git libgomp1 libatomic1 python3 python3-pip python3-venv unzip file patchelf \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+RUN python3 -m venv /venv && /venv/bin/pip install --no-cache-dir --disable-pip-version-check -r requirements-build.txt
+# llama.cpp at the commit setup.py pins (ggml for the engine, mtmd for pictures), exactly as setup.py fetches it
+RUN /venv/bin/python -c "import setup; print(setup.get_llama_cpp())"
+# AMD's TheRock wheels for Vega 10: ~10 GB into the venv, the pinned nightly build sagentlab/PR #2009 validated on
+# an MI25 (wave64 intrinsic, BF16/FP16 GEMM and device self-tests). Runtime libraries have to contain gfx900 support.
+RUN /venv/bin/pip install --no-cache-dir --disable-pip-version-check --index-url "${ROCM_INDEX}" "rocm[libraries,devel]==${ROCM_WHEEL}"
+# resolve the three TheRock roots the HIP build scripts expect (devel, core, libraries for the gfx900 family)
+RUN RS=/venv/bin/rocm-sdk; HP=$($RS path --root 2>/dev/null | head -n1); if [ -z "$HP" ]; then HP=$(find /venv -type d -name _rocm_sdk_devel | head -n1 || true); fi; \
+    test -n "$HP" && test -d "$HP/lib" && echo "HP=$HP"; \
+    CORE=$(find /venv -type d -name _rocm_sdk_core | head -n1); echo "CORE=$CORE"; \
+    LIBW=$(find /venv -type d -name _rocm_sdk_libraries_* -not -path '*core*' | head -n1); echo "LIBW=$LIBW"; \
+    test -d "$LIBW/lib" && cp /dev/null /dev/null; echo "roots ok"
+ENV PATH=/venv/bin:$PATH
+ARG STRATA_COMMIT=unknown
+ARG STRATA_VERSION=
+RUN set -e; \
+    RS=/venv/bin/rocm-sdk; HP=$($RS path --root 2>/dev/null | head -n1); [ -n "$HP" ] || HP=$(find /venv -type d -name _rocm_sdk_devel | head -n1); \
+    CORE=$(find /venv -type d -name _rocm_sdk_core | head -n1); \
+    LIBW=$(find /venv -type d -name _rocm_sdk_libraries_* -not -path '*core*' | head -n1); \
+    ver="${STRATA_VERSION:-$(sed -n 's/^[[:space:]]*project([^)]*VERSION[[:space:]]*\([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -1)}"; \
+    GPUS=$(nproc); \
+    VARIANT=gfx900 ARCHS=gfx900 SRC=/src LLAMA=/src/third_party/llama.cpp HP="$HP" CORE="$CORE" LIBW="$LIBW" \
+      OUT=/work PKGVER="$ver" COMMIT="$STRATA_COMMIT" JOBS="$GPUS" \
+      packaging/build_gfx900_linux.sh; \
+    cat /work/build.status; \
+    test -d "/work/components/engine/${ver}-linux-x86_64-hip-gfx900" && test "$(ls /work/components/engine/${ver}-linux-x86_64-hip-gfx900 | head -1)" != "" \
+      && test -f /work/components/engine/${ver}-linux-x86_64-hip-gfx900/strata
+
+# ---- 2. the Terminal (the release archive, built here)
+# llama.cpp at the pinned commit is fetched here too, so the first start does not depend on GitHub
+FROM ${BASE_IMAGE} AS terminal
+ARG STRATA_COMMIT
+ENV STRATA_BUILD_COMMIT=${STRATA_COMMIT}
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates git && rm -rf /var/lib/apt/lists/*
+COPY . /src/
+RUN python3 /src/packaging/package_terminal.py --out /out --cache /cache \
+ && mkdir -p /opt/strata \
+ && tar -xzf /out/strata-terminal-*-linux-x86_64.tar.gz -C /opt/strata \
+ && mv /opt/strata/strata-terminal-* /opt/strata/terminal \
+ && /opt/strata/terminal/bin/strata --version
+RUN cd /opt/strata/terminal && STRATA_CONTROL_INSTALL=1 STRATA_INSTALL_DIR=/opt/strata/seed PYTHONNOUSERSITE=1 \
+      /opt/strata/terminal/python/bin/python3 -c "import setup; print(setup.get_llama_cpp())" \
+ && rm -rf /opt/strata/seed/third_party/*.zip* \
+ && cd /opt/strata/seed/third_party/llama.cpp \
+ && find . -mindepth 1 -maxdepth 1 ! -name gguf-py ! -name ggml ! -name 'LICENSE*' -exec rm -rf {} + \
+ && find ggml -mindepth 1 -depth ! -type d ! -name CMakeLists.txt -delete && find ggml -mindepth 1 -type d -empty -delete
+
+# ---- 3. the runtime image (the same shape as Dockerfile's, AMD flavor)
+FROM ${BASE_IMAGE}
+ARG STRATA_VERSION=dev
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates libgomp1 libatomic1 libnuma1 zlib1g \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+COPY --from=terminal /opt/strata/terminal /opt/strata/terminal
+COPY --from=terminal /opt/strata/seed /opt/strata/seed
+COPY --from=engine-build /work/components/engine/ /opt/strata/components/engine/
+COPY docker/entrypoint.sh docker/healthcheck.sh /opt/strata/
+COPY docker/strata-wrapper.sh /usr/local/bin/strata
+COPY docs/AMD_GFX900.md /opt/strata/gfx900-mi25.md
+RUN chmod 0755 /opt/strata/entrypoint.sh /opt/strata/healthcheck.sh /usr/local/bin/strata
+ENV STRATA_COMPONENTS_DIR=/opt/strata/components STRATA_INSTALL_DIR=/data/install XDG_STATE_HOME=/data/state \
+    XDG_CONFIG_HOME=/data/config HOME=/data/home PORT=8080 LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONNOUSERSITE=1 STRATA_IN_DOCKER=1
+VOLUME ["/data"]
+EXPOSE 8080
+LABEL org.opencontainers.image.title="Strata gfx900" com.strata.flavor="amd-gfx900" com.strata.build="from-source" \
+      org.opencontainers.image.description="Strata engine for AMD Vega 10 (gfx900): 2x MI25 tuned preset" \
+      org.opencontainers.image.version="${STRATA_VERSION}"
+HEALTHCHECK --interval=30s --timeout=8s --start-period=3h --retries=3 CMD ["/opt/strata/healthcheck.sh"]
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/strata/entrypoint.sh"]
+CMD ["run"]
