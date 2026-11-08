@@ -47,7 +47,7 @@ chk $? "engine configured"
 nice -n 10 cmake --build "$OUT/b" --target strata -j "$JOBS" > "$OUT/build.log" 2>&1
 chk $? "engine built"
 [ -x "$OUT/b/strata" ] || { st "ABORT no strata"; exit 1; }
-if [ "$COMMIT" != unknown ]; then grep -aq "$ID9" "$OUT/b/strata" || { st "ABORT strata does not carry the build id $ID9"; exit 1; }; st "build id $ID9 present"; fi
+# note: the plain engine binary only carries STRATA_VERSION (0.1.58), not a build id (that is the dsv41 target)
 BINS=( "$OUT/b/strata" )
 if [ "$VISION_CPU" = 1 ]; then
   cmake -G Ninja -S tools/vision -B "$OUT/bv" -DCMAKE_BUILD_TYPE=Release -DLLAMA_DIR="$LLAMA" -DSTRATA_VISION_CUDA=OFF \
