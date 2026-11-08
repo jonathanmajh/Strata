@@ -75,6 +75,10 @@ for f in "$STAGE/strata" "$STAGE"/strata-vision; do
   [ -f "$f" ] || continue
   st "RUNPATH $(basename "$f"): $(readelf -d "$f" | grep -E 'RPATH|RUNPATH' | cut -d'[' -f2 | tr -d ']' | paste -sd' ')"
 done
+# the hipBLASLt version of this ROCm into BUILD.json (the packager requires it; this build runs plain hipBLAS,
+# and gfx900 has no tuning table of its own yet, tools/hip)
+python3 packaging/stage_tuning.py --stage "$STAGE" --archs "$ARCH" --rocm "$HP" >> "$OUT/stage_tuning.log" 2>&1
+chk $? "tuning tables"
 [ -n "${NO_PACKAGE:-}" ] && { st "STAGE-DONE"; exit 0; }
 rm -rf "$OUT/components"; mkdir -p "$OUT/components/engine"
 python3 packaging/package_engine.py --src "$STAGE" --backend hip --version "$PKGVER" --out "$OUT/components/engine" --arch "$ARCH" \
