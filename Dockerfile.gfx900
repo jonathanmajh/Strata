@@ -35,19 +35,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential ca-certificates git libgomp1 libatomic1 python3 python3-pip python3-venv unzip file patchelf \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
+# build tools and the TheRock gfx900 wheel set first: they do not depend on this checkout, so fiddling with the
+# source does not throw the ~3 GB wheel install away (the wheels stay cached with docker/buildah layers)
+COPY requirements-build.txt /tmp/requirements-build.txt
+RUN python3 -m venv /venv && /venv/bin/pip install --no-cache-dir --disable-pip-version-check -r /tmp/requirements-build.txt
+# AMD's TheRock wheels for Vega 10: the pinned nightly build sagentlab/PR #2009 validated on an MI25 (wave64
+# intrinsic, BF16/FP16 GEMM and device self-tests). Runtime libraries have to contain gfx900 support.
+RUN /venv/bin/pip install --no-cache-dir --disable-pip-version-check --index-url "${ROCM_INDEX}" "rocm[libraries,devel]==${ROCM_WHEEL}"
 COPY . .
-RUN python3 -m venv /venv && /venv/bin/pip install --no-cache-dir --disable-pip-version-check -r requirements-build.txt
 # llama.cpp at the commit setup.py pins (ggml for the engine, mtmd for pictures), exactly as setup.py fetches it
 RUN /venv/bin/python -c "import setup; print(setup.get_llama_cpp())"
-# AMD's TheRock wheels for Vega 10: ~10 GB into the venv, the pinned nightly build sagentlab/PR #2009 validated on
-# an MI25 (wave64 intrinsic, BF16/FP16 GEMM and device self-tests). Runtime libraries have to contain gfx900 support.
-RUN /venv/bin/pip install --no-cache-dir --disable-pip-version-check --index-url "${ROCM_INDEX}" "rocm[libraries,devel]==${ROCM_WHEEL}"
 # resolve the three TheRock roots the HIP build scripts expect (devel, core, libraries for the gfx900 family)
 RUN RS=/venv/bin/rocm-sdk; HP=$($RS path --root 2>/dev/null | head -n1); if [ -z "$HP" ]; then HP=$(find /venv -type d -name _rocm_sdk_devel | head -n1 || true); fi; \
     test -n "$HP" && test -d "$HP/lib" && echo "HP=$HP"; \
     CORE=$(find /venv -type d -name _rocm_sdk_core | head -n1); echo "CORE=$CORE"; \
     LIBW=$(find /venv -type d -name _rocm_sdk_libraries_* -not -path '*core*' | head -n1); echo "LIBW=$LIBW"; \
-    test -d "$LIBW/lib" && cp /dev/null /dev/null; echo "roots ok"
+    test -d "$LIBW/lib" || { echo "NO LIBW"; exit 1; }; echo "roots ok"
 ENV PATH=/venv/bin:$PATH
 ARG STRATA_COMMIT=unknown
 ARG STRATA_VERSION=
@@ -56,13 +59,12 @@ RUN set -e; \
     CORE=$(find /venv -type d -name _rocm_sdk_core | head -n1); \
     LIBW=$(find /venv -type d -name _rocm_sdk_libraries_* -not -path '*core*' | head -n1); \
     ver="${STRATA_VERSION:-$(sed -n 's/^[[:space:]]*project([^)]*VERSION[[:space:]]*\([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -1)}"; \
-    GPUS=$(nproc); \
+    GPUS=$(nproc); rc=0; \
     VARIANT=gfx900 ARCHS=gfx900 SRC=/src LLAMA=/src/third_party/llama.cpp HP="$HP" CORE="$CORE" LIBW="$LIBW" \
       OUT=/work PKGVER="$ver" COMMIT="$STRATA_COMMIT" JOBS="$GPUS" \
-      packaging/build_gfx900_linux.sh; \
-    cat /work/build.status; \
-    test -d "/work/components/engine/${ver}-linux-x86_64-hip-gfx900" && test "$(ls /work/components/engine/${ver}-linux-x86_64-hip-gfx900 | head -1)" != "" \
-      && test -f /work/components/engine/${ver}-linux-x86_64-hip-gfx900/strata
+      packaging/build_gfx900_linux.sh || rc=$?; \
+    echo "BUILD_SCRIPT_RC=$rc"; cat /work/build.status 2>/dev/null; \
+    tail -n 100 /work/cfg.log 2>/dev/null; tail -n 60 /work/collect.log 2>/dev/null; tail -n 60 /work/package.log 2>/dev/null; exit $rc
 
 # ---- 2. the Terminal (the release archive, built here)
 # llama.cpp at the pinned commit is fetched here too, so the first start does not depend on GitHub
