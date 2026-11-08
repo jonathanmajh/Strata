@@ -56,6 +56,17 @@ compile locally:
 docker build -t strata:gfx900 -f Dockerfile.gfx900 . --build-arg STRATA_COMMIT=$(git rev-parse --short HEAD)
 ```
 
+Run it (the model lives in `/data` on a volume; two MI25s: `GPUS=0,1`). `STRATA_EXPERIMENTAL_GFX900=1` is the
+Terminal's opt-in gate for this arch (`setup.py` treats it like the gfx1103/gfx1150 ones; the engine in the
+image is already built for gfx900, and the engine itself needs no flag):
+
+```sh
+docker run -d --device=/dev/kfd --device=/dev/dri --group-add video --ipc=host --ulimit memlock=-1 \
+  --shm-size 2g --stop-timeout 120 -p 127.0.0.1:8080:8080 -v strata-data:/data \
+  -e STRATA_EXPERIMENTAL_GFX900=1 \
+  -e MODEL=IQ1_M -e FAMILY=coder -e CONTEXT=65536 -e KV=int8 -e GPUS=0,1 strata:gfx900
+```
+
 ## Two MI25 cards (32 GB VRAM), 24 GB of RAM, weights on a SATA SSD
 
 2x MI25 (32 GB total, both HBM2) differs from a one-card 8 GB box: VRAM is what you have most of. The tuning
@@ -78,7 +89,9 @@ restart). A direct engine start (`build-gfx900/strata serve.server --help`) take
 
 ```sh
 # the Terminal way (also what the container runs): the engine flags ride on --set
-STRATA_ARENA_MMAP=1 STRATA_STAGE_TRIM=1 STRATA_GFX906_ATTN_QUERY_SWIZZLE=1 STRATA_GFX906_ATTN_REDUCE12=1 \
+# (STRATA_EXPERIMENTAL_GFX900=1 lets the Terminal's card checks accept gfx900; in the container pass it
+# with -e and the STRATA_* variables reach the engine from the environment)
+STRATA_EXPERIMENTAL_GFX900=1 STRATA_ARENA_MMAP=1 STRATA_STAGE_TRIM=1 STRATA_GFX906_ATTN_QUERY_SWIZZLE=1 STRATA_GFX906_ATTN_REDUCE12=1 \
 strata launch --no-tui --family coder --model IQ1_M --gpu 0,1 --context 65536 --kv int8 \
   --set "--layer-split=27" --set "--pipeline-windows=2" --set "--trim-stage-weights=on" \
   --set "--mmap-experts=auto" --set "--expert-cache=auto" --set "--prefill=auto" \

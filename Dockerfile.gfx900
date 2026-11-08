@@ -7,10 +7,13 @@
 #   docker build -t strata:gfx900 -f Dockerfile.gfx900 . \
 #     --build-arg ROCM_WHEEL=7.14.0a20260612 --build-arg STRATA_COMMIT=$(git rev-parse --short HEAD)
 #
-# Run it (the model lives in /data on a volume; two MI25s: GPUS=0,1):
+# Run it (the model lives in /data on a volume; two MI25s: GPUS=0,1). The Terminal's gfx900 opt-in gate needs
+# STRATA_EXPERIMENTAL_GFX900=1 — the image's engine is already built for gfx900; the variable lets the card
+# checks accept the arch (setup.py AMD_ARCHS, docs/AMD_GFX900.md):
 #
 #   docker run -d --device=/dev/kfd --device=/dev/dri --group-add video --ipc=host --ulimit memlock=-1 \
 #     --shm-size 2g --stop-timeout 120 -p 127.0.0.1:8080:8080 -v strata-data:/data \
+#     -e STRATA_EXPERIMENTAL_GFX900=1 \
 #     -e MODEL=IQ1_M -e FAMILY=coder -e CONTEXT=65536 -e KV=int8 -e GPUS=0,1 strata:gfx900
 #
 # Tuned launch with the engine arguments of the 2x MI25 preset (docs/AMD_GFX900.md): engine-only flags go
