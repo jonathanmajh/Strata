@@ -13,12 +13,13 @@
 #     --shm-size 2g --stop-timeout 120 -p 127.0.0.1:8080:8080 -v strata-data:/data \
 #     -e MODEL=IQ1_M -e FAMILY=coder -e CONTEXT=65536 -e KV=int8 -e GPUS=0,1 strata:gfx900
 #
-# Tuned launch with the engine arguments of the 2x MI25 preset (docs/AMD_GFX900.md):
+# Tuned launch with the engine arguments of the 2x MI25 preset (docs/AMD_GFX900.md): engine-only flags go
+# through STRATA_SET (the same --set entries a saved preset carries)
 #
 #   docker run --rm -it --device=/dev/kfd --device=/dev/dri --group-add video --ipc=host --ulimit memlock=-1 \
-#     -v strata-data:/data strata:gfx900 \
-#     strata launch --no-tui --family coder --model IQ1_M --context 65536 --kv int8 \
-#       --layer-split 27 --pipeline-windows 2 --trim-stage-weights --gpu 0,1
+#     -v strata-data:/data -e STRATA_SET="--layer-split=27 --pipeline-windows=2 --trim-stage-weights=on \
+#     --mmap-experts=auto --expert-cache=auto --kv-resident=16384 --vram-reserve-mib=768 --adapt-every=0 --pcie-frac=0" \
+#     strata:gfx900 strata launch --no-tui --family coder --model IQ1_M --gpu 0,1 --context 65536 --kv int8
 #
 # Plain legacy-builder features only (no heredocs, no --mount), like the repo's other Dockerfiles.
 

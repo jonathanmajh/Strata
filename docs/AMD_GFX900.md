@@ -71,19 +71,27 @@ the SSD serves the misses. Bounds to keep in mind:
   `STRATA_GFX906_ATTN_QUERY_SWIZZLE=1` `STRATA_GFX906_ATTN_REDUCE12=1` (the same A/B switches the gfx906 cards
   check bitwise against the default path).
 
-Serving command (Coder pack keeps 256 of the 512 experts; IQ1_M is ~29.6 GB):
+Serving command (Coder pack keeps 256 of the 512 experts; IQ1_M is ~29.6 GB). Two layers take the settings:
+the Terminal CLI (`strata launch`) takes the model-facing flags, and everything the Terminal does not offer as
+its own flag goes through `--set KEY=VALUE` (the Advanced table; it is saved with the preset and survives a
+restart). A direct engine start (`build-gfx900/strata serve.server --help`) takes the engine's own flags.
 
 ```sh
+# the Terminal way (also what the container runs): the engine flags ride on --set
 STRATA_ARENA_MMAP=1 STRATA_STAGE_TRIM=1 STRATA_GFX906_ATTN_QUERY_SWIZZLE=1 STRATA_GFX906_ATTN_REDUCE12=1 \
-build-gfx900/strata serve.server \
-  --family coder --model IQ1_M --layer-split 27 --pipeline-windows 2 --trim-stage-weights \
-  --mmap-experts --expert-profile data/expert-profile-coder.bin --expert-cache auto \
-  --prefill auto --max-context 65536 --kv int8 --kv-resident 16384 \
-  --vram-reserve-mib 768 --adapt-every 0 --pcie-frac 0
+strata launch --no-tui --family coder --model IQ1_M --gpu 0,1 --context 65536 --kv int8 \
+  --set "--layer-split=27" --set "--pipeline-windows=2" --set "--trim-stage-weights=on" \
+  --set "--mmap-experts=auto" --set "--expert-cache=auto" --set "--prefill=auto" \
+  --set "--kv-resident=16384" --set "--vram-reserve-mib=768" --set "--adapt-every=0" --set "--pcie-frac=0"
 ```
 
-Same engine in the container (`docker run ... strata:gfx900 strata launch ...` with those flags; the same env
-variables pass straight through).
+`--expert-profile data/expert-profile-coder.bin` (the #4982 form) is NOT passed: the Coder pack carries its
+own profile, and the low-RAM adoption of `strata launch` (`strata_cli/launch/adopt.py`) wires `--expert-profile`
+to the pack's file together with `--mmap-experts` and `--expert-cache` automatically. Hand it only if you
+prepared a profile yourself.
+
+Same engine in the container (`STRATA_SET="--layer-split=27 --pipeline-windows=2 ..."` picks up the same
+`--set` entries at start; the STRATA_* environment variables pass straight through to the engine).
 
 Notes:
 
