@@ -1,0 +1,60 @@
+# Strata on 2x AMD Instinct MI25 (gfx900, Vega 10, 16 GB HBM2 each), with the tuning measured fastest on a
+# 32 GB DDR4 + SATA SSD box (docs/AMD_GFX900_MI25_REPORT.md, 2026-11-09):
+#
+#   IQ2_XS @ 256k:  --resident-budget-gib 16 --layer-split 27   (260 tok/s prefill, no hangs)
+#   IQ1_M  @ 256k:  the Coder pack's own preset (the 262k needle sweep ran without extra flags)
+#
+# Needs the image ghcr.io/jonathanmajh/strata:gfx900-0.1.58 (built with Dockerfile.gfx900) and the amdgpu
+# kernel driver on the host. STRATA_EXPERIMENTAL_GFX900=1 stays on (it is already set below): the image's
+# engine is built for gfx900, and the flag lets the Terminal's card checks pass.
+#
+#   cp .env.example .env       # set MODEL / API_KEY at least; the MI25 lines are already filled in here
+#   docker compose -f docker-compose.gfx900-mi25.yml up -d
+#   docker compose -f docker-compose.gfx900-mi25.yml logs -f    # the first start downloads the model (tens of GB, resumable)
+#
+# MODEL=IQ2_XS is the best-quality variant measured here (full-expert GSQ-RCO set, FAMILY=qwen).
+# For the Coder pack instead: MODEL=IQ1_M, FAMILY=coder, and STRATA_SET="" (the r16 budget has no
+# measurable effect on IQ1_M and the hand-tuned split did not beat the auto prober there).
+# CONTEXT=256k is the trained limit; the sweep ran with ~272k headroom for the harness, not needed for chat.
+services:
+  strata:
+    image: ${STRATA_IMAGE:-ghcr.io/jonathanmajh/strata:gfx900-0.1.58}
+    container_name: strata
+    restart: unless-stopped
+    ports:
+      - "${STRATA_BIND:-127.0.0.1}:${STRATA_PORT:-8080}:8080"      # 127.0.0.1 = this computer only
+    environment:
+      FAMILY: ${FAMILY:-qwen}
+      MODEL: ${MODEL:-IQ2_XS}
+      CONTEXT: ${CONTEXT:-256k}
+      KV: ${KV:-int8}                        # the measured configuration: int8 KV (~10 GB at 262k)
+      VISION: ${VISION:-off}
+      GPUS: ${GPUS:-0,1}                     # both MI25s; layer-split 27 goes 0-26 / 27-47+head
+      STRATA_SET: ${STRATA_SET:-resident-budget-gib=16 layer-split=27}    # the measured best config (see report)
+      TUNE: ${TUNE:-skip}
+      API_KEY: ${API_KEY:-}                  # empty: made on the first start; docker exec strata strata launch --show-key
+      # The gfx900 runtime switches (the engine is compiled for gfx900; these turn on the paths the
+      # gfx906-compat backend shares with it, and the RAM-mapped expert arena):
+      STRATA_EXPERIMENTAL_GFX900: 1          # the card gate — do not turn off
+      STRATA_ARENA_MMAP: ${STRATA_ARENA_MMAP:-1}
+      STRATA_STAGE_TRIM: ${STRATA_STAGE_TRIM:-1}
+      STRATA_GFX906_ATTN_QUERY_SWIZZLE: ${STRATA_GFX906_ATTN_QUERY_SWIZZLE:-1}
+      STRATA_GFX906_ATTN_REDUCE12: ${STRATA_GFX906_ATTN_REDUCE12:-1}
+    volumes:
+      - strata-data:/data                    # the model (tens of GB), presets, tuning, the key. Survives image updates.
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - "${RENDER_GID:-render}"              # needed if you add `user:`; as root the container does not need it
+    # the expert tier page-locks about 16 GiB, so memlock must be unlimited, and the shared arena wants the
+    # host IPC namespace:
+    ipc: host
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    shm_size: 2gb
+    stop_grace_period: 3m                    # the model drains and unloads on docker stop (tens of GB to unmap)
+    # Do not set a memory limit: Strata plans from the whole computer's RAM and pins ~16 GiB of it.
+volumes:
+  strata-data:

@@ -1,0 +1,59 @@
+name: Docker image gfx900
+
+# Builds the gfx900 engine image (Dockerfile.gfx900) and pushes it to the GitHub Container Registry.
+# Runs when the files that go into the image change on the gfx900-mi25 branch. Tag scheme (the
+# project log's docs/AMD_GFX900_MI25_REPORT.md):
+#   ghcr.io/jonathanmajh/strata:gfx900-0.1.58          always the newest build of the branch
+#   ghcr.io/jonathanmajh/strata:gfx900-<short-sha>     the same build, immutable, for rolling back
+# Pulling needs the package to be Public (or a token with read:packages).
+
+on:
+  push:
+    branches: [gfx900-mi25]
+    paths:
+      - Dockerfile.gfx900
+      - packaging/build_gfx900_linux.sh
+      - include/strata/kernels/swiglu.cuh
+      - .github/workflows/docker-gfx900.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/strata
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get the engine version from CMakeLists.txt
+        id: ver
+        run: |
+          V=$(sed -n 's/^project(strata VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -1)
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.gfx900
+          build-args: |
+            ROCM_INDEX=https://rocm.nightlies.amd.com/v2/gfx900/
+            ROCM_WHEEL=7.14.0a20260612
+            STRATA_COMMIT=${{ github.sha }}
+            STRATA_VERSION=${{ steps.ver.outputs.version }}
+          tags: |
+            ${{ env.IMAGE }}:gfx900-${{ steps.ver.outputs.version }}
+            ${{ env.IMAGE }}:gfx900-${{ github.sha }}
+          push: true

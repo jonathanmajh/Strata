@@ -35,7 +35,9 @@ if [ "$COMMIT" != unknown ] && [ ! -e "$SRC/.git" ] && [ ! -f "$SRC/BUILD_ID" ];
 : > "$S"
 export HIP_PLATFORM=amd HIP_COMPILER=clang HIP_RUNTIME=rocclr ROCM_PATH=$HP HIP_PATH=$HP
 SYSDEPS=""; [ -d "$HP/lib/rocm_sysdeps" ] && SYSDEPS=";$HP/lib/rocm_sysdeps"
-HIPDEFS=(-DCMAKE_HIP_COMPILER=$HP/llvm/bin/clang++ -DCMAKE_HIP_COMPILER_ROCM_ROOT=$HP "-DCMAKE_PREFIX_PATH=$HP;$LIBW;$CORE$SYSDEPS"
+HIPCOMP="$HP/../core/bin/hipcc"; [ -x "$HIPCOMP" ] || HIPCOMP="$HP/llvm/bin/clang++"
+export PATH="${HP}/../core/bin:$HP/bin:$PATH"
+HIPDEFS=(-DCMAKE_HIP_COMPILER=$HIPCOMP -DCMAKE_HIP_COMPILER_ROCM_ROOT=$HP "-DCMAKE_PREFIX_PATH=$HP;$LIBW;$CORE$SYSDEPS"
          "-DCMAKE_HIP_FLAGS=--rocm-path=$HP --rocm-device-lib-path=$HP/lib/llvm/amdgcn/bitcode")
 st "start $V ($ARCH) commit $COMMIT"
 cd "$SRC" || exit 1

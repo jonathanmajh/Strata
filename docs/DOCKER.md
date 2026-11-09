@@ -23,6 +23,7 @@ Docker on a **Mac** has no access to the Mac's graphics chip (no Metal): use the
 | AMD **RX 7000** series (RDNA 3, gfx1100 / gfx1101 / gfx1102) | `0.2.7-rocm-gfx110x` | the `amdgpu` kernel driver |
 | AMD **Ryzen AI Max** ("Strix Halo", Radeon 8060S, gfx1151) | `0.2.7-rocm-gfx1151` | the `amdgpu` kernel driver |
 | Intel **Arc** A-series and B-series (including Arc Pro B70) | `0.2.7-sycl` (if no image exists for a release, [build it](#build-it-yourself)) | the `i915` or `xe` kernel driver; **prepared model files** (see [Intel](#intel-arc)) |
+| AMD **Instinct MI25 / Vega 56 / 64** (gfx900, experimental) | `gfx900-0.1.58` from the [`gfx900-mi25` branch](AMD_GFX900_MI25_REPORT.md), built by [Dockerfile.gfx900](../Dockerfile.gfx900) | the `amdgpu` kernel driver + `STRATA_EXPERIMENTAL_GFX900=1` (already set in the compose file) |
 
 **Measured on:** images built from the 0.1.45 engine packages. Size on disk: `cuda13` 2.2 GB, `cuda12` 2.9 GB, `rocm-gfx120x` 2.8 GB,
 `rocm-gfx110x` 2.4 GB, `rocm-gfx1151` 1.5 GB. The download is about a third of that: `cuda13` 640 MB, `cuda12` 845 MB,
@@ -91,7 +92,9 @@ GGUF files, so the GGUF folder should be on a fast SSD.
 ## Docker Compose
 
 Ready-made files are in [docker/compose/](../docker/compose): `docker-compose.nvidia.yml`, `docker-compose.amd.yml`,
-`docker-compose.intel.yml` and `.env.example`. Copy the one for your card and its `.env.example`, edit, start:
+`docker-compose.intel.yml`, and, for 2x AMD Instinct MI25 (gfx900) with the tuned preset measured on that box,
+`docker-compose.gfx900-mi25.yml` ([the project log](AMD_GFX900_MI25_REPORT.md) has the numbers behind it). Copy the
+one for your card and its `.env.example`, edit, start:
 
 ```sh
 cd docker/compose

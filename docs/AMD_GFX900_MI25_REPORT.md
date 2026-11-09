@@ -24,6 +24,17 @@ The ship image is built against AMD's TheRock wheels `7.14.0a20260612` from
 `https://rocm.nightlies.amd.com/v2/gfx900/`, the same nightly family the MI25 validation on the
 community track (PRs #839/#2009) ran.
 
+Two build fixes landed while making the engine compile on this toolchain (the source of truth is
+on the branch; both are also in the image build):
+
+- `include/strata/kernels/swiglu.cuh`: HIP has no CUDA `__expf` / `__fdividef` device intrinsics
+  by those names. The three swiglu helpers now use `::expf` / plain `/` on HIP (libdevice's fast
+  family compiles them to the same approximate quotient under fast math), and the CUDA-pinned
+  path stays bit-exact through a `swilu_native_pinned` twin.
+- `packaging/build_gfx900_linux.sh`: the TheRock wheel tree keeps `hipcc` in
+  `rocm-core/bin`, not `llvm/bin/clang++`'s wrapper spot, so the script now picks
+  `$HP/../core/bin/hipcc` when it exists and prepends it to `PATH`.
+
 ## The image
 
 `Dockerfile.gfx900` builds the engine (component `0.1.58-linux-x86_64-hip-gfx900`, with gfx900
@@ -134,10 +145,71 @@ Expectations, so surprising numbers are not read as breakage:
 Results folders from `strata_bench.py` are shareable as-is (keys/IPs redacted), and
 `--compare <folderA> --compare-only <folderB>` prints two runs side by side.
 
+## What it measured once the 262 k bench was on (the operator's box, 2026-11-08/09)
+
+### IQ1_M (Coder), int8 KV, `--context 256k`
+
+All six needle runs found their needle (`tools/needle_bench.py`, depths 10/50/90 %, fresh server
+per context, cards cooled under 60 °C between runs):
+
+| context | needle 10% | needle 50% | needle 90% | prefill tok/s | decode tok/s |
+|---|---|---|---|---|---|
+| 32k → 48k actual | 81 s ✓ | 1 s ✓ | 88 s ✓ | 358–366 | 22.4 |
+| 64k → 67k actual | 171 s ✓ | 181 s ✓ | 145 s ✓ | 340–386 | 22.4 |
+| 128k → 136k actual | 341 s ✓ | 362 s ✓ | 188 s ✓ | 310–364 | 23.4 |
+| 262k → 272k actual | 781 s ✓ | 770 s ✓ | 774 s ✓ | 318–328 | 23.4 |
+
+(The harness targets 2% under the label because the engine refuses a prompt with no room to
+answer, so the "actual" configs are what the runs used.) Complete numbers, suite reports and
+config paths: `/data/install/BENCHMARK-RESULTS.md` on the box.
+
+### IQ2_XS (full set, `qwen` family) at 262 k: the hang, and the budget that fixes it
+
+Plain `--mmap-experts` at 262 k makes prefill hang: the engine's issue #29 watchdog prints
+`no progress for 60 s … waiting for the GPU (attention, router) at layer 40–45 of the prompt
+chunk` and exits (SIGABRT), the server restarts the engine. Not an OOM: it is file-tier page-in
+starving the decoder card's prefill on the 32 GB box. Sweeping the engine's resident RAM budget
+(`--resident-budget-gib`, page-locked expert tier) fixed it, and the sweep found the sweet spot:
+
+| setting | hangs | needle runtime @ 262k | note |
+|---|---|---|---|
+| plain mmap-experts | 3 (watchdog kills) | fastest prefill of the set | unusable — the run dies mid-sweep |
+| `--resident-budget-gib 8` | 0 | 148–164 tok/s | too slow |
+| `--resident-budget-gib 20` | 2 | — | over the box (self-clamps to 18.15) |
+| `--resident-budget-gib 30` | 0 | 259–275 tok/s | works, but 14 GiB more pinned |
+| **`--resident-budget-gib 16`** | **0** | **942–1037 s, 238–254 tok/s** | **best balance** |
+
+### Tuning sweep on top of r16 (IQ2_XS, 262 k, one fresh server per variant)
+
+| variant (all with `--resident-budget-gib 16`) | needles 10/50/90 | prefill tok/s | hangs |
+|---|---|---|---|
+| r16 baseline (no split flags) | 1037 / 1008 / 942 s ✓ | 238–254 | 0 |
+| `--layer-split 27` alone | 985 / 905 / 898 s ✓ | 260–261 | **0 — best** |
+| `--adapt-every 0 --pcie-frac 0` ("light") | 1071 / 1047 / 1024 s ✓ | 229–240 | 0 |
+| split27 + `--pipeline-windows 2 --trim-stage-weights --kv-resident 16384 --vram-reserve-mib 768 --pcie-frac 0` ("tuned") | 981 / 920 s ✓, 90% shot died — watchdog hang at layer 18, chunk from token 175,104 | 257–264 | 1 |
+
+Two launch-flow bugs got fixed while finding that: `--adapt-every` is a Terminal-side option the
+packaged engine knows nothing about (pass it through the config's engine args and the engine dies
+at startup), and `--trim-stage-weights` is a boolean flag that takes no `on` value. Both now go
+through `strata launch --set` (or `STRATA_SET`) the way `docs/AMD_GFX900.md` already shows.
+
+**Best config for this box, IQ2_XS @ 262 k:** `--resident-budget-gib 16` +
+`--layer-split 27` — nothing else. Clean prefill (260–261 tok/s fresh, no KV reuse artifacts),
+zero hangs, zero extra tuning knobs. One run per variant ≈ ±3% noise; `split27` wins
+comfortably.
+
+`docker/compose/docker-compose.gfx900-mi25.yml` runs exactly that (and the IQ1_M twin) with
+`ghcr.io/jonathanmajh/strata:gfx900-0.1.58`.
+
 ## Not yet done / open
 
-- No extended runs yet at 256 k context on either variant (the overnight driver above runs it).
+- ~~No extended runs yet at 256 k context on either variant~~ IQ1_M 32k/64k/128k/262k and
+  IQ2_XS 262k are measured now (the tables above); IQ2_XS at shorter contexts is still open.
 - No cross-quant quality comparison yet.
 - `HSA_OVERRIDE_GFX_VERSION` is not needed (gfx900 is the card's own name; nothing to test there).
 - The GitHub Packages visibility of `ghcr.io/jonathanmajh/strata` may need a manual flip to
   Public in the UI if an anonymous pull ever 404s (the token PATCH endpoint returned 404).
+- `--pipeline-windows 2` plus the memory knobs cost one watchdog hang in the sweep; a second
+  run would tell noise from a real regression.
+- The `light` variant (no adapt rounds, no PCIe fraction) is 10% slower than split27 alone; if
+  the box gets busier with background jobs, `--adapt-every 0` may still be the safer pick there.
