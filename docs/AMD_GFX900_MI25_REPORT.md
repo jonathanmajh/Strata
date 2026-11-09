@@ -44,19 +44,14 @@ code objects in the `.hip_fatbin`) plus the Terminal, in one image. Published:
 ghcr.io/jonathanmajh/strata:gfx900-0.1.58
 ```
 
-Build it from the branch:
-
-```sh
-docker build -f Dockerfile.gfx900 . \
-  --build-arg ROCM_INDEX=https://rocm.nightlies.amd.com/v2/gfx900/ \
-  --build-arg ROCM_WHEEL=7.14.0a20260612 \
-  --build-arg STRATA_COMMIT=$(git rev-parse --abbrev-ref HEAD) --build-arg STRATA_VERSION=0.1.58
-```
-
-`STRATA_COMMIT` has to be the full 40 characters (the packaging check runs it against a full
-hash), and `packaging/stage_tuning.py` runs inside the build so `BUILD.json` carries a
-`hipblaslt_version` (the gfx900 path runs plain hipBLAS; the field is there for the packaging
-check).
+It rebuilds itself: `.github/workflows/docker-gfx900.yml` runs on every push to `gfx900-mi25`
+that touches the image's inputs (Dockerfile, build script, the swiglu headers) and pushes the
+same two tags, `gfx900-0.1.58` (rolling) and `gfx900-<full-sha>` (immutable, for rolling back).
+The push logs in with the repo secret `CR_TOKEN`, a classic PAT with `write:packages`: the ghcr
+package `strata` was created before the workflow existed and has no repository linked, so a bare
+`GITHUB_TOKEN` is denied (`permission_denied: write_package`). If the package is ever deleted
+first push from Actions recreates it linked to this repo — the secret only prevents that
+headache.
 
 ## The Terminal's card gate
 
