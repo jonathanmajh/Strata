@@ -44,6 +44,11 @@ services:
       # median of the 3-round sweep vs the r16 + split27 baseline. Opt-in everywhere; mutually
       # exclusive with --pipeline-windows, which stays off here.
       STRATA_SPLIT_OVERLAP: 1
+      # A/B'd on this box 2026-11-10 (bench/results/2026-11-10-mi25-tier2): won every median of
+      # the 2-round sweep. The long prompt's read went 91.8 vs 61.4 tok/s (+49%); the short chats
+      # were flat to slightly better; decode unchanged; no hangs. The idle host CPU takes the
+      # streamed experts of prompt chunks up to 3072 tokens.
+      STRATA_PREFILL_CPU_SHARE: auto
     volumes:
       - strata-data:/data                    # the model (tens of GB), presets, tuning, the key. Survives image updates.
     devices:
