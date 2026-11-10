@@ -1,4 +1,4 @@
-# The gfx900 rocBLAS calibration attempt (tier-1 item 4): made, measured, refused
+# The gfx900 rocBLAS calibration attempt (tier-1 item 4): made, measured, retested
 
 Date: 2026-11-10. Box: 2x AMD Instinct MI25 (gfx900, 16 GB HBM2 each), 32 GB DDR4, SATA SSD.
 Model under test: `Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS` (the live IQ2_XS pack), config
@@ -7,17 +7,18 @@ Model under test: `Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS` (the live IQ2_XS pack), co
 
 Tier-1 item 4 said: "rocBLAS tuning table (`tools/`, `tune_rocblas`): calibrate prompt dense
 GEMMs for gfx900; plain hipBLAS is untuned here. Run later this box time permitting."
-It was run. The table was calibrated on the box, and the route it serves measured **slower**
-end to end. The table and the loader went in; the env switch that arms them did not.
+It was run. The table was calibrated on the box; the first A/B's verdict was **wrong because
+of bad measurement hygiene**, and the retest below is the reference.
 
 ## TL;DR
 
-| question | answer (medians, 2 rounds alternated per arm) |
+| question | answer |
 |---|---|
-| Are there faster rocBLAS solutions for the prompt's FP16-out GEMMs on gfx900? | Yes, on 101 of 112 shape/bucket rows; 1.05x to ~34x on the microbenchmark |
-| Does routing the prompt's FP16 GEMMs through the table make the box faster? | **No.** The enablement arm lost on the cells that matter and won only small cells |
-| Was it adopted? | No. `STRATA_HIP_PROMPT_F16` untouched in compose; the table ships as an opt-in file |
-| Doc | `docs/AMD_GFX900.md` ("A rocBLAS table made on the MI25s"), `bench/results/2026-11-10-mi25-tier2/README.md` |
+| Are there faster rocBLAS solutions for the prompt's FP16-out GEMMs on gfx900? | Yes, on 101 of 112 shape/bucket rows; 1.05x to ~34x |
+| Does routing the prompt's FP16 GEMMs through the table make the box faster? | Yes where it loads heavily: +33.6 tok/s medians vs FP16-only on the 16,904-token prompt |
+| Does enabling the FP16 prompt route at all (default vs F16) hurt this box? | Not on build-gfx900: +30 / +21 tok/s medians on the two long cells |
+| Was it adopted in compose? | No — needs a 262k run + owner's go for FP16 numerics |
+| Loader proven to engage? | Yes, per-round logs (617 picks/round, tuned_launches=2617/1766, fallbacks=1) |
 
 ## Steps, in order
 
@@ -69,7 +70,8 @@ end to end. The table and the loader went in; the env switch that arms them did 
 7. **End-to-end A/B** (`tools/ab_engine.py`, fresh engine per arm-round, arms alternated
    across rounds, 2 rounds), config `split27.json`: base (A) vs
    `STRATA_HIP_PROMPT_F16=1,STRATA_ROCBLAS_TUNING=/workspace/tools/hip` (B).
-   4 server starts, 2 per arm.
+   4 server starts, 2 per arm. **Superseded:** this arm ran the component binary, which
+   lacks the loader (see Errata; the retest calls this whole round-pair invalid).
 
 8. **Doc + commit + restore**: table committed to `tools/hip/` (the gfx1030 tables live
    there too), loader documented in `docs/AMD_GFX900.md` ("A rocBLAS table made on the
@@ -149,25 +151,91 @@ Reading it honestly:
   earlier tier-2 run; within that run-to-run spread, and both arms got the same spread this
   time).
 
-## Interpretation hypothesis (not verified, static analysis)
+## Errata: the first A/B ran the wrong binary
 
-- The dense FP16 GEMMs are not the bottleneck of a 257k-context prompt on this build. The
-  expert path through the MMQ/IQ routes and the attention KV dominate; making those 14
-  GEMMs 1.4-1.8x faster cannot move end-to-end prompt by 31 tok/s. The table cannot be a
-  win of that size anyway.
-- The loss itself is what needs explaining. The likeliest cause is not a bad kernel (each
-  solution was output-checked and refused rows were never used) but the FP16 route
-  itself: FP16 inputs halve the bytes the wide GEMMs read, but MI25 (gfx900) has no tensor
-  path folded into this engine's FP16 route, and FP32 GEMMs over the same data
-  via the current route are apparently already well served by hipBLAS's default kernels
-  (which this box was not measuring at all: prompt read 260 tok/s @262k came from the
-  DEFAULT route, which does not use FP16). So switching to FP16,
-  whatever the table does to those 14 shapes' speed, tips the balance against a route that
-  was almost free for this model.
-- Not tested, would settle it: (a) FP16-only arm (no table) vs base, to separate
-  "the FP16 route" from "the table"; (b) 262k prompt, not 6.3k, for a single A/B;
-  (c) profiling which GEMMs actually carry the dense-path time on this model with
-  `STRATA_ROCBLAS_VERBOSE=1` + the engine log between the two arms.
+The first A/B ran with the component binary (`/data/components/engine/0.1.58-...-hip-gfx900/strata`)
+as the engine under test: `ab_engine.py` starts `serve/server.py --engine strata`, which resolves
+the `exe` from the config file and never our `build-gfx900/strata`. That binary carries no
+`STRATA_ROCBLAS_AVAILABLE`, no `create_rocblas_state`, and no `--rocm paths`, so the "FP16 +
+table" arm loaded nothing: its numbers were FP16 vs default, with the table absent. In the
+reviewer's words: "the experiment only measures FP16 vs default". The "FP16 measured slower
+end-to-end" line was never a table result and is not a stability claim either — it was a
+component-binary FP16-vs-default comparison with n=2 and balanced arm order absent.
+It remains recorded here because it explains why the box was left untouched. Retested
+afterwards, see next section; the conclusion flipped for the long cells.
+
+## Retest: 3 arms, 4 rounds, verified load, per-arm VRAM
+
+Executor: `tools/ab_engine.py` (extended for this work): N arms, Latin rotation of arm
+in order across rounds (A C B / C B A / B A C / A C B), VRAM sampled (rocm-smi) after each
+arm's ready and at its end, medians with min..max spread per cell, warm-up request built
+into `wait_ready` already, outlier cells flagged rather than hidden.
+
+Arms (all `build-gfx900/strata`, since the component lacks the loader):
+
+- A — plain (base), no env delta.
+- C — `STRATA_HIP_PROMPT_F16=1` (FP16 route, no table).
+- B — `STRATA_HIP_PROMPT_F16=1, STRATA_ROCBLAS_TUNING=/workspace/tools/hip, STRATA_ROCBLAS_VERBOSE=1`.
+
+Config: `/data/install/tune/split27.json`; `STRATA_COMPONENTS_DIR=/data/components`;
+`LD_LIBRARY_PATH` pointing at the TheRock gfx900 wheels (devel+core+libraries); layer split
+27; r16 resident budget; tier-1 `STRATA_SPLIT_OVERLAP=1` and tier-2 `STRATA_PREFILL_CPU_SHARE=auto` inherited from the config.
+
+### Load verification (required by the reviewer; all fired)
+
+- **Broken-header negative control** (`/tmp/broken-rocblas/gfx900-rocblas-5.5.0.9811f2ea52.txt`,
+  version string mangled): engine logs
+  `prefill gemm: rocBLAS version mismatch: file=5.5.0.9812f2ea52 runtime=5.5.0.9811f2ea52
+   (/tmp/broken-rocblas/...); rocBLAS's default kernels run` and
+  `prefill gemm: rocBLAS tuning summary tuned_launches=0 fallbacks=0`. The detection path works.
+- **Every B round log:** 617 `rocBLAS solution` picks logged per round,
+  `tuned_launches=2617` (device 0) and `tuned_launches=1766` (device 1),
+  `fallbacks=1` per device per round. 2617 of 2618 solution-gemm launches engaged a tuned
+  kernel; 1 refused and ran the default. `rel_l2` on the bench kernels was 0.
+- **Every C round log:** only the neutral `HIP device N gfx900 - STRATA_HIP_PROMPT_F16=1`
+  lines; zero tuning dispatch lines.
+- Rows requested by the engine that the table does not cover (`N=1280 K=2560`, GDN
+  internals for the fresh-code shared expert path) fall through with a single
+  `rocBLAS default kernel; no row` line each; no fallback counting there (not a refusal).
+- **VRAM:** B ended 34-44 MiB over A per arm-round; C identical to A; the FP16 route does
+  NOT also shrink the r16 expert budget, and the resident layer dropped nothing.
+
+### Medians (n=4) with spread
+
+| cell | A base | C FP16 | B FP16+table |
+|---|---|---|---|
+| chat0 prompt | 47.5 [44.2..48.0] | 46.0 [42.2..47.8] | 45.6 [7.3..47.8] |
+| chat1 prompt | 39.0 [38.0..39.0] | 41.9 [16.2..42.4] | 38.5 [15.6..42.3] |
+| chat2 prompt | 45.0 [41.2..45.2] | 41.2 [36.2..45.3] | 41.4 [36.4..44.7] |
+| chat0 decode | 37.1 | 37.2 | 35.9 |
+| chat1 decode | 20.0 | 18.5 | 19.8 |
+| chat2 decode | 20.4 | 19.1 | 18.0 |
+| long (6,345 tok) decode | 21.1 | 21.2 | 21.4 |
+| long (6,345 tok) prompt | 69.2 [49.5..81.3] | 99.3 [72.8..123.9] | 84.8 [63.8..136.2] |
+| long (16,904 tok) decode | 21.6 | 22.4 | 21.1 |
+| long (16,904 tok) prompt | 121.4 [114.9..155.5] | 142.6 [113.5..188.2] | **176.2** [134.0..196.1] |
+
+Two cells hit the outlier pattern flagged in the review: B round-3 chat0 prompt came in at
+**7.3 tok/s**, and C round-1 chat1 at **16.2 tok/s**. Both are carried in the spreads above
+rather than used to drive conclusions; B round-3's chat0 is the largest single cell distortion
+in the table. The long cells remain the noisy ones (a spread of ~30 tok/s within an arm).
+
+### Reading (and the caveat the reviewer flagged)
+
+- **FP16 route first.** C vs A favours FP16 on the long cells (+30.1 and +21.2 medians),
+  chat cells a wash, decode within the noise band. No VRAM penalty. So FP16 is not the
+  near-guaranteed regression the first A/B suggested.
+- **Table second.** B vs C isolates the table: the 16,904-token cell gains +33.6 tok/s
+  (176.2 vs 142.6), i.e. table engaged on dense GEMMs of that chunk size. The 6,345-token
+  cell gives back −14.5 (84.8 vs 99.3); chat cells are a wash; chat2 decode −1.1 (noise band).
+- The 6,345 cell contains short-window chunks mostly (block sizes < 1024 amortized) — the
+  table was never meant to matter there. The 16,904 cell hits the chunk sizes the table
+  covers best.
+- Since the table only engages through the FP16 route, the FP16 route not being a clear
+  wall is what matters; it now isn't. Still, flipping FP16 on for production changes prompt
+  numerics per the FP16 caveat; owner approval required, plus a 262k validation run, before
+  adoption. Current status: valid + fast where it loads heavily; adoption not decided.
+
 
 ## What must not change on account of this
 

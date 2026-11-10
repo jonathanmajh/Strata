@@ -137,11 +137,18 @@ behind `STRATA_ROCBLAS_AVAILABLE`, set by the cmake backend for gfx906-compat bu
 commit); without the env the engine never opens the file.
 
 `STRATA_HIP_PROMPT_F16=1` alone is the lever that switches the prompt's 16-bit GEMMs to FP16; the
-numbers change (FP16 rounding of each GEMM's output). On this box the full launch measured slower
-end to end than the default (two alternating rounds per arm, `STRATA_PREFILL_CPU_SHARE=auto` matched
-on both sides): the 6,345-token long prompt read at 50.9 vs the base's 82.0 tok/s and decode went
-14.3 vs 22.5, with the short chats a wash. It is not in compose; the FP16 route and the table stay
-opt-in for anyone who wants to test them. Raw rows: `bench/results/2026-11-10-mi25-tier2/README.md`.
+numbers change (FP16 rounding of each GEMM's output). A first launch on this box read slower
+end to end (two alternating rounds per arm): 50.9 vs 82.0 tok/s on the 6,345-token long
+prompt and decode 14.3 vs 22.5. That run used the component binary, which carries no loader,
+and is now recorded as a false start. A corrected retest on `build-gfx900/strata` (4 rounds
+per arm, Latin arm ordering, warm-up requests, VRAM sampled): the FP16 route was NOT a loss
+on the same workload — long prompts read at 142.6 vs 121.4 tok/s (16,904 tokens) and 99.3 vs
+69.2 (6,345 tokens); chat cells a wash; VRAM unchanged (B arm ran ~34-44 MiB heavier, no
+resident-budget effect). Adding the table on top of FP16 (B) measured +33.6 tok/s over
+FP16-only on the 16,904-token cell (176.2 vs 142.6) and a wash on chats. The FP16 route is
+still not in compose: adoption needs a 262k prompt run and the owner's explicit go for the
+FP16 numerics change. The table stays opt-in; raw rows and the full retest log:
+`bench/results/2026-11-10-mi25-tier2/README.md`.
 
 ## What is measured where
 

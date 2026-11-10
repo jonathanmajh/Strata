@@ -88,12 +88,14 @@ env `STRATA_COMPONENTS_DIR=/data/components`. Full tables and per-request rows:
   503; the jsonl marks it implicitly, the README documents it; no number was invented.
 - The `--spec` arm stays deferred: the live drafter here is DFlash2, whose window cut is
   governed by `--draft-conf`, not `--spec`.
-- rocBLAS calibration table (Tier-1 item 4): build path done, calibration done, end-to-end
-  slower — not adopted, FP16 route stays off. The `gfx906` cmake backend now compiles the
-  `STRATA_ROCBLAS_AVAILABLE` consumer and `tune_rocblas`; the table made on this box is
-  `tools/hip/gfx900-rocblas-5.5.0.9811f2ea52.txt` (111 rows tuned of 112). Details:
-  `docs/AMD_GFX900.md` ("A rocBLAS table made on the MI25s"), nums in
-  `bench/results/2026-11-10-mi25-tier2/README.md`.
+- rocBLAS calibration table (Tier-1 item 4): built, calibrated, retooled after a binary mix-up
+  was caught (the first A/B ran the component binary, no loader; the numbers were FP16-vs-default
+  only). Retest with all arms on `build-gfx900/strata`, 4 rounds/arm Latin-rotated, VRAM logged,
+  load verified: the table engages (617 picks/round, DLL builds), the FP16 route is NOT a loss on
+  the long cells (+30 / +21 medians), and the table adds +33.6 on the 16,904-token cell; no
+  compose change (adoption needs the 262k run and FP16-numerics sign-off). The `gfx906` cmake
+  backend compiles the loader now; table in `tools/hip/gfx900-rocblas-5.5.0.9811f2ea52.txt`.
+  Details: `docs/AMD_GFX900.md`, `bench/results/2026-11-10-mi25-tier2/rocblas-table.md`.
 
 ## Tier-2 outcome (2026-11-10, later)
 
