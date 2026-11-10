@@ -1,0 +1,23 @@
+{"round": 0, "arm": "base", "req": "chat0", "decode": 35.1, "prompt": 47.9, "prompt_n": 34, "n": 256, "text": "```python\ndef merge_sorted_lists(list1: list, list2: list) -> list:\n    \"\"\"\n    "}
+{"round": 0, "arm": "base", "req": "chat1", "decode": 12.9, "prompt": 41.4, "prompt_n": 27, "n": 252, "text": "A refrigerator operates by utilizing a refrigerant, a fluid with a low boiling p"}
+{"round": 0, "arm": "base", "req": "chat2", "decode": 19.1, "prompt": 41.4, "prompt_n": 29, "n": 206, "text": "1. Set specific, measurable goals to maintain motivation and track your progress"}
+{"round": 0, "arm": "base", "req": "long", "decode": 18.9, "prompt": 56.5, "prompt_n": 6345, "n": 117, "text": "The list consists entirely of single, lowercase English words that appear to be "}
+{"round": 0, "arm": "mmvq0", "req": "chat0", "decode": 30.5, "prompt": 42.8, "prompt_n": 34, "n": 256, "text": "```python\ndef merge_sorted_lists(list1: list, list2: list) -> list:\n    \"\"\"\n    "}
+{"round": 0, "arm": "mmvq0", "req": "chat1", "decode": 18.0, "prompt": 40.4, "prompt_n": 27, "n": 189, "text": "A refrigerator operates by utilizing a refrigerant, a fluid with a low boiling p"}
+{"round": 0, "arm": "mmvq0", "req": "chat2", "decode": 19.4, "prompt": 41.0, "prompt_n": 29, "n": 209, "text": "1. Set specific, measurable goals to maintain motivation and track your progress"}
+{"round": 0, "arm": "mmvq0", "req": "long", "decode": 22.1, "prompt": 62.9, "prompt_n": 6345, "n": 136, "text": "The list consists entirely of single, lowercase English words that appear to be "}
+{"round": 0, "arm": "expmode2", "req": "chat0", "decode": 38.0, "prompt": 42.7, "prompt_n": 34, "n": 256, "text": "```python\ndef merge_sorted_lists(list1: list, list2: list) -> list:\n    \"\"\"\n    "}
+{"round": 0, "arm": "expmode2", "req": "chat1", "decode": 13.8, "prompt": 42.2, "prompt_n": 27, "n": 235, "text": "A refrigerator operates by utilizing a refrigerant, a fluid with a low boiling p"}
+{"round": 0, "arm": "expmode2", "req": "chat2", "decode": 21.7, "prompt": 45.1, "prompt_n": 29, "n": 215, "text": "1. Set specific, measurable goals to maintain motivation and track your progress"}
+{"round": 0, "arm": "expmode2", "req": "long", "decode": 21.0, "prompt": 72.9, "prompt_n": 6345, "n": 117, "text": "The list consists entirely of single, lowercase English words that appear to be "}
+{"round": 1, "arm": "expmode2", "req": "chat0", "decode": 27.0, "prompt": 47.3, "prompt_n": 34, "n": 256, "text": "```python\ndef merge_sorted_lists(list1: list, list2: list) -> list:\n    \"\"\"\n    "}
+{"round": 1, "arm": "expmode2", "req": "chat1", "decode": 15.4, "prompt": 41.9, "prompt_n": 27, "n": 256, "text": "A refrigerator operates by utilizing a refrigerant, a fluid with a low boiling p"}
+{"round": 1, "arm": "expmode2", "req": "chat2", "decode": 20.5, "prompt": 41.2, "prompt_n": 29, "n": 214, "text": "1. Set specific, measurable goals to maintain motivation and track your progress"}
+{"round": 1, "arm": "expmode2", "req": "long", "decode": 21.7, "prompt": 84.3, "prompt_n": 6345, "n": 123, "text": "The list consists entirely of single, lowercase English words that function as n"}
+{"round": 1, "arm": "mmvq0", "req": "chat0", "decode": 36.2, "prompt": 41.1, "prompt_n": 34, "n": 256, "text": "```python\ndef merge_sorted_lists(list1: list, list2: list) -> list:\n    \"\"\"\n    "}
+{"round": 1, "arm": "mmvq0", "req": "chat1", "decode": 20.4, "prompt": 4.9, "prompt_n": 27, "n": 229, "text": "A refrigerator operates by utilizing a refrigerant, a fluid with a low boiling p"}
+{"round": 1, "arm": "mmvq0", "req": "chat2", "decode": 22.1, "prompt": 37.2, "prompt_n": 29, "n": 192, "text": "1. Set specific, measurable goals to maintain motivation and track your progress"}
+{"round": 1, "arm": "mmvq0", "req": "long", "decode": 15.2, "prompt": 69.9, "prompt_n": 6345, "n": 133, "text": "The list consists entirely of single, lowercase English words that appear to be "}
+{"round": 1, "arm": "base", "req": "chat0", "decode": 30.9, "prompt": 36.9, "prompt_n": 34, "n": 256, "text": "```python\ndef merge_sorted_lists(list1: list, list2: list) -> list:\n    \"\"\"\n    "}
+{"round": 1, "arm": "base", "req": "chat1", "decode": 14.5, "prompt": 32.7, "prompt_n": 27, "n": 252, "text": "A refrigerator operates by utilizing a refrigerant, a fluid with a low boiling p"}
+{"round": 1, "arm": "base", "req": "chat2", "decode": 21.5, "prompt": 44.1, "prompt_n": 29, "n": 206, "text": "1. Set specific, measurable goals to maintain motivation and track your progress"}

@@ -72,4 +72,20 @@ Results: appended below after the runs; raw jsonl under `bench/results/2026-11-1
 
 ## Outcome (filled in after execution)
 
-TBD
+Executed 2026-11-10 on the operator's box itself (the live IQ2_XS service was paused for the
+sweep and restored). Executor: `tools/ab_engine.py`, config `/data/install/tune/split27.json`,
+env `STRATA_COMPONENTS_DIR=/data/components`. Full tables and per-request rows:
+`bench/results/2026-11-10-mi25-tier1/README.md` (+ jsonl/log).
+
+- **`STRATA_SPLIT_OVERLAP=1`: adopt.** Beat base in every decode cell over 3 alternating
+  rounds (medians: 39.5 vs 35.0, 21.5 vs 20.2, 18.6 vs 15.8, 22.3 vs 21.4 tok/s) and both
+  chat prompt medians, with zero hangs — the strongest and cleanest signal of the sweep.
+  Config change only (`STRATA_SET="... overlap"` compose env or the preset's env table).
+- **`STRATA_MMVQ_WAVE=0`: no case.** Ties with base within the run spread.
+- **`STRATA_EXP_MODE=2`: no decode case, one prefill hint** (long prompt 78.6 vs 56.5
+  tok/s vs base's missing-cell-affected 1 round; not called — needs a prefill A/B).
+- Run 1 lost one cell (base round 1 long) to the file-tier watchdog timeout (#1407) and a
+  503; the jsonl marks it implicitly, the README documents it; no number was invented.
+- The `--spec` arm stays deferred: the live drafter here is DFlash2, whose window cut is
+  governed by `--draft-conf`, not `--spec`.
+- rocBLAS calibration table (Tier-1 item 4) needs a CMake build on the box; not started.
