@@ -4,59 +4,10 @@ name: Checks
 # typecheck / test / build.  No GPU, no model and no download of weights.  The config snapshot has its own workflow (snapshot.yml)
 # and the backend compile checks theirs (backends.yml).  Run the same thing by hand:  python tools/check --only <step>
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/check.yml
-      - tools/check
-      - requirements*.txt
-      - CMakeLists.txt
-      - CMakePresets.json
-      - cmake/**
-      - src/**
-      - include/**
-      - bench/micro/**
-      - third_party/**
-      - tests/**
-      - serve/**
-      - strata.py
-      - setup.py
-      - strata_cli/**
-      - strata_control/**
-      - tools/**
-      - packaging/**
-      - docker/**
-      - apps/host/**
-      - apps/desktop/**
-      - metal/**
-      - sycl/**
-  pull_request:
-    paths:
-      - .github/workflows/check.yml
-      - tools/check
-      - requirements*.txt
-      - CMakeLists.txt
-      - CMakePresets.json
-      - cmake/**
-      - src/**
-      - include/**
-      - bench/micro/**
-      - third_party/**
-      - tests/**
-      - serve/**
-      - strata.py
-      - setup.py
-      - strata_cli/**
-      - strata_control/**
-      - tools/**
-      - packaging/**
-      - docker/**
-      - apps/host/**
-      - apps/desktop/**
-      - metal/**
-      - sycl/**
-  workflow_dispatch:
+  workflow_dispatch: null
 
 permissions:
   contents: read

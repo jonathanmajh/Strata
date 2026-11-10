@@ -1,29 +1,9 @@
 name: Minimal serving runtime
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  push:
-    paths:
-      - .github/workflows/terminal-minimal-server.yml
-      - requirements.txt
-      - strata.py
-      - strata_cli/**
-      - strata_control/**
-      - serve/**
-      - tests/terminal/test_runtime.py
-      - tools/minimal_server_smoke.py
-      - tools/strata_tokenizer.py
-  pull_request:
-    paths:
-      - .github/workflows/terminal-minimal-server.yml
-      - requirements.txt
-      - strata.py
-      - strata_cli/**
-      - strata_control/**
-      - serve/**
-      - tests/terminal/test_runtime.py
-      - tools/minimal_server_smoke.py
-      - tools/strata_tokenizer.py
-  workflow_dispatch:
+  workflow_dispatch: null
 
 permissions:
   contents: read

@@ -9,33 +9,10 @@ name: Docker images
 #   ghcr.io/niko1221/strata:<version>-<flavor>   and   ghcr.io/niko1221/strata:latest-<flavor>
 # The first run with "push" off builds everything without publishing it (a dry run).
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag whose engine packages go into the images (for example v0.2.7)'
-        required: true
-        type: string
-      flavors:
-        description: 'Flavors to build, comma separated (empty: every flavor the release has a package for)'
-        required: false
-        default: ''
-        type: string
-      push:
-        description: 'Push the images to ghcr.io (off: build only, nothing is published)'
-        required: true
-        default: false
-        type: boolean
-      latest:
-        description: 'Also move the latest-<flavor> tags (turn off for a pre-release or a test)'
-        required: true
-        default: true
-        type: boolean
-      source_ref:
-        description: 'Git ref of the Dockerfile and the Terminal sources (empty: the release tag)'
-        required: false
-        default: ''
-        type: string
+  workflow_dispatch: null
 
 permissions:
   contents: read

@@ -5,42 +5,10 @@ name: Docs
 # settings page matches the register.  Python standard library only; nothing is built, downloaded or run on a GPU.
 # Archived pages (history/, release notes, bench/results) are not checked; their baseline is history/LINK-BASELINE.md.
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/docs.yml
-      - '**/*.md'
-      - docs/data/release.json
-      - docs/data/capabilities.json
-      - data/settings-register.json
-      - tools/check
-      - tools/check_links.py
-      - tools/doc_pages.py
-      - tools/release_manifest.py
-      - tools/capability_table.py
-      - tools/settings_register.py
-      - strata_cli/__init__.py
-      - CMakeLists.txt
-      - apps/host/package.json
-      - apps/desktop/package.json
-  pull_request:
-    paths:
-      - .github/workflows/docs.yml
-      - '**/*.md'
-      - docs/data/release.json
-      - docs/data/capabilities.json
-      - data/settings-register.json
-      - tools/check
-      - tools/check_links.py
-      - tools/doc_pages.py
-      - tools/release_manifest.py
-      - tools/capability_table.py
-      - tools/settings_register.py
-      - strata_cli/__init__.py
-      - CMakeLists.txt
-      - apps/host/package.json
-      - apps/desktop/package.json
+  workflow_dispatch: null
 
 permissions:
   contents: read
