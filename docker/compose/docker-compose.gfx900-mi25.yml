@@ -40,6 +40,10 @@ services:
       STRATA_STAGE_TRIM: ${STRATA_STAGE_TRIM:-1}
       STRATA_GFX906_ATTN_QUERY_SWIZZLE: ${STRATA_GFX906_ATTN_QUERY_SWIZZLE:-1}
       STRATA_GFX906_ATTN_REDUCE12: ${STRATA_GFX906_ATTN_REDUCE12:-1}
+      # A/B'd on this box 2026-11-10 (bench/results/2026-11-10-mi25-tier1): won every decode
+      # median of the 3-round sweep vs the r16 + split27 baseline. Opt-in everywhere; mutually
+      # exclusive with --pipeline-windows, which stays off here.
+      STRATA_SPLIT_OVERLAP: 1
     volumes:
       - strata-data:/data                    # the model (tens of GB), presets, tuning, the key. Survives image updates.
     devices:
