@@ -92,12 +92,14 @@ What survived the retest:
   in at 7.3 tok/s, and C round-1 chat1 at 16.2, B round-0/1 chat0 decode 20.1/35.0
   against r2/r3's 36.8/37.7. They are flagged, not used to draw conclusions.
 
-**Adoption: unchanged (not adopted).** The case for flipping the FP16 route in production on
-this box rests on the two long cells only: it needs a 262k-prompt run and, per the owner-side
-risk note about FP16 rounding in prompts, an explicit opt-in per site. The table itself is
-valid and measurably fast where it applies; its gated route can only help if FP16 is enabled
-first. The build gained a plumbing path (it was compiled out); no config default was touched.
-Sweep raw rows: `rocblas-sweep.log` (not committed).
+**Adoption: not flipped in compose.** 262k-row outcome (one successful pass per arm,
+2026-11-10): FP16-off read 250.0 tok/s (258,363 tokens, decode 14.6) vs FP16+table
+266.1 tok/s (decode 15.7), VRAM unchanged, 22.6k/12.2k tuned launches with 1 fallback per
+device. The 6.5% margin is consistent in sign but not wide; the 16,904-token cell
+showed +33.6 tok/s over FP16-only. `docs/AMD_GFX900.md` carries the opt-in numbers. No
+compose change: the FP16 numerics change wants a per-site owner decision plus the
+from-scratch 262k stall watch on this box. The build gained a plumbing path; no config
+default was touched. Sweep raw rows: `rocblas-sweep.log` (not committed).
 
 ### What would settle the adoption question
 
@@ -105,6 +107,13 @@ FP16-off 1-2x at 262k prompt vs FP16+table at the same; if the result holds by a
 margin, `STRATA_HIP_PROMPT_F16=1` + `STRATA_ROCBLAS_TUNING=tools/hip` as an opt-in note in
 the gfx900 doc becomes the right recommendation (measured on this box, this model).
 
+
+## Item: the 262k prompt battery (adopted as opt-in evidence, not in compose)
+
+See `docs/AMD_GFX900.md` for the opt-in note; numbers in `rocblas-table.md` ("262k
+prompt" section). Two stalls recorded on this box's from-scratch 262k attempts; the
+outcome traced to the file-tier watchdog's busy-ness sampling, not to the arm. Both
+arms can pass. VRAM delta <45 MiB.
 
 ## Item: `STRATA_EXP_MODE=2` on top of the CPU share (not adopted)
 

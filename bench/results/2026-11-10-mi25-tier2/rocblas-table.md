@@ -15,10 +15,10 @@ of bad measurement hygiene**, and the retest below is the reference.
 | question | answer |
 |---|---|
 | Are there faster rocBLAS solutions for the prompt's FP16-out GEMMs on gfx900? | Yes, on 101 of 112 shape/bucket rows; 1.05x to ~34x |
-| Does routing the prompt's FP16 GEMMs through the table make the box faster? | Yes where it loads heavily: +33.6 tok/s medians vs FP16-only on the 16,904-token prompt |
-| Does enabling the FP16 prompt route at all (default vs F16) hurt this box? | Not on build-gfx900: +30 / +21 tok/s medians on the two long cells |
-| Was it adopted in compose? | No — needs a 262k run + owner's go for FP16 numerics |
-| Loader proven to engage? | Yes, per-round logs (617 picks/round, tuned_launches=2617/1766, fallbacks=1) |
+| Does routing the prompt's FP16 GEMMs through the table make the box faster? | Yes where it loads heavily: +33.6 tok/s medians vs FP16-only on the 16,904-token prompt, +16.1 tok/s (+6.5%) on the 258,363-token prompt (one pass each). |
+| Does enabling the FP16 prompt route at all (default vs F16) hurt this box? | Not on build-gfx900: +30 / +21 tok/s medians on the two long cells; +6.5% at 262k |
+| Was it adopted in compose? | No — adoption stays an owner decision; the gfx900 doc notes the opt-in (measured on this box, this model) |
+| Loader proven to engage? | Yes, per-round logs (617 picks/round, tuned_launches=2617/1766 in the 4-round test, 22.6k/12.2k in the 262k pass, fallbacks=1 everywhere) |
 
 ## Steps, in order
 
@@ -234,7 +234,37 @@ in the table. The long cells remain the noisy ones (a spread of ~30 tok/s within
 - Since the table only engages through the FP16 route, the FP16 route not being a clear
   wall is what matters; it now isn't. Still, flipping FP16 on for production changes prompt
   numerics per the FP16 caveat; owner approval required, plus a 262k validation run, before
-  adoption. Current status: valid + fast where it loads heavily; adoption not decided.
+  adoption.
+
+## 262k prompt (the deciding battery, 2026-11-10 evening)
+
+One pass per arm at a ~258k-token prompt (`long_prompt(246000)` tokenizes to 258,363
+tokens, under `max_context` 272,288). `--rounds 2` was launched; arm A round 0 died to a
+from-scratch stall (see below); the A retry completed and arm B completed on its attempt.
+These rows are the one successful run per arm:
+
+| cell | A (base) | B (FP16 + table) |
+|---|---|---|
+| long prompt (258,363 tok) decode | 14.6 | 15.7 |
+| long prompt (258,363 tok) read | 1033 s (250.0 tok/s) | **971 s (**266.1** tok/s)** |
+| chat0 decode / prompt | 36.9 / 43.9 | 36.6 / 47.0 |
+| chat1 decode / prompt | 20.6 / 42.6 | 19.4 / 42.2 |
+| chat2 decode / prompt | 21.3 / 45.1 | 22.3 / 40.2 |
+| VRAM end | 15876/15829 MiB | 15803/15757 MiB |
+
+Per-device tuned_launches (B, this pass): 22,600 (device 0), 12,256 (device 1); 1 fallback
+each. The margin at this size is smaller than at 16k tokens (dense products are a smaller
+share of the read) but it is the same sign; decode is within the noise band.
+
+**The 262k pass is not reliable on this box today.** The first A attempt stalled at
+"reading the prompt (batched), done up to token 258356" for 134 s and the engine aborted
+(#29 stall watchdog) because the file tier did not read as busy to the watchdog's counter;
+the retry and arm B both crossed the same point using the `STRATA_WATCHDOG_IO_S` (600 s)
+window — both logs print "no step finished for 60 s, but the file tier is still being read
+... waiting up to 600 s". So whether the 262k pass makes it flips on how busy the file
+tier looks in that exact window, not on the arm. Consistent hangs track per attempt, not per arm.
+
+Exactly what survived: 1 A pass and 1 B pass. Not 2x.
 
 
 ## What must not change on account of this
@@ -255,6 +285,10 @@ in the table. The long cells remain the noisy ones (a spread of ~30 tok/s within
 - `73f394e4` [Benchmark] MI25 gfx900 rocBLAS table made, not adopted; FP16 prompt path
   measured slower — the engine wiring, the tool, the table, docs
 - `ffb14aff` [Docs] plan file: tier-1 item 4 done — rocBLAS table made, not adopted
+- `ba8f08f7` [Docs] full report of the calibration attempt (later corrected by)
+- `b74c5cf4` [Benchmark] MI25 retest: the table loads and wins; the FP16 verdict flips
+- (this commit) [Benchmark] MI25 262k battery: FP16+table read at 266.1 tok/s vs the
+  base route's 250.0; FP16-off pass failed once to a non-arm stall; opt-in note shipped
 
 ## Reproducing
 

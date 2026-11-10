@@ -147,8 +147,21 @@ on the same workload — long prompts read at 142.6 vs 121.4 tok/s (16,904 token
 resident-budget effect). Adding the table on top of FP16 (B) measured +33.6 tok/s over
 FP16-only on the 16,904-token cell (176.2 vs 142.6) and a wash on chats. The FP16 route is
 still not in compose: adoption needs a 262k prompt run and the owner's explicit go for the
-FP16 numerics change. The table stays opt-in; raw rows and the full retest log:
-`bench/results/2026-11-10-mi25-tier2/README.md`.
+FP16 numerics change. The table ships as an opt-in note below; raw rows and the full retest
+log: `bench/results/2026-11-10-mi25-tier2/README.md`.
+
+**Opt-in numbers recorded on this box (this model), for anyone who wants to enable it:**
+the 262k prompt (258,363 tokens, top of this box's resident split27 config) passed once per
+arm on 2026-11-10 evening: base FP16-off read 250.0 tok/s, FP16+table read 266.1 tok/s
+(+6.5%); decode 14.6 vs 15.7 tok/s; VRAM unchanged (<45 MiB); 6.3k and 16.9k cells are in
+`bench/results/2026-11-10-mi25-tier2/README.md` (16.9k cell: +33.6 tok/s over FP16-only,
++45.2 over the 121.4 base). One arm-failing incident was recorded on the base arm's first
+from-scratch 262k attempt (stall at token 258,356, #29; the retry and the FP16 arm both
+crossed the same position using the 600 s STRATA_WATCHDOG_IO_S allowance — the hang does
+not track the arm, it tracks how busy the file tier looks in that window). Enabling it:
+`STRATA_HIP_PROMPT_F16=1 STRATA_ROCBLAS_TUNING=/path/to/tools/hip`; the output bytes change
+(FP16 rounding). The arm-headroom on from-scratch 262k prompts is worth guarding for, so
+run a needle-check before adopting on a live service.
 
 ## What is measured where
 
