@@ -5747,6 +5747,7 @@ template<> struct GridOf<16> { using T = uint64_t; static constexpr int N = 256;
 template<> struct GridOf<18> { using T = uint32_t; static constexpr int N = 256; __device__ static const T* src() { return iq3xxs_grid; } };
 template<> struct GridOf<21> { using T = uint32_t; static constexpr int N = 512; __device__ static const T* src() { return iq3s_grid; } };
 template<> struct GridOf<23> { using T = uint32_t; static constexpr int N = 1; __device__ static const T* src() { return iq3s_grid; } };   // IQ4_XS: no grid
+template<> struct GridOf<17> { using T = uint2; static constexpr int N = 512; __device__ static const T* src() { return (const uint2*) iq2xs_grid; } };
 
 // SG = 1 (mode 6): the signs without byte-SIMD ops, which gfx906 lacks (strata_vcmpne4 / strata_vsub4 unpack to
 // ~12 word ops each).  m = the sign nibble as 0x00/0xff bytes; (g ^ m) is g or -g-1 per byte, so
@@ -5892,6 +5893,49 @@ template<int SG> struct DotG<16, SG> { __device__ static __forceinline__ float f
 
 template<int SG> struct DotG<23, SG> { __device__ static __forceinline__ float f(const void* vbq, const block_q8_1* bq8_1, int kbx, int iqs,
                                                       const uint32_t*) { return vec_dot_iq4_xs_q8_1(vbq, bq8_1, kbx, iqs); } };
+
+// IQ2_XS (type 17), the one gu format the LDS layouts skipped until now: its cousins all run the LDS
+// mode 6/7 kernels, this one fell back to the lane-parallel amd em kernel's byte-SIMD sign form.  SG = 1
+// is the dp4a sign trick (see SG above IQ2_S's): (g ^ m) per byte is g or -g-1, and dp4a(g ^ m, u) minus
+// dp4a(m, u) is exactly the per-byte signed product - the same integers in the same places as the
+// vec_dot form, so the float output is the same.  This is the one that pays where dp4a is SOFTWARE
+// (gfx900): the vcmpne4/vsub4 pair unpacks to ~12 word ops each that m, a framgent of the same masks,
+// replaces with 2 muls and 2 adds per 8 products.  On sdot4 hardware both forms are one instruction.
+template<int SG> struct DotG<17, SG> { __device__ static __forceinline__ float f(const void* vbq, const block_q8_1* bq8_1, int kbx, int iqs,
+                                                      const uint2* grid) {
+    const block_iq2_xs* bq2 = (const block_iq2_xs*) vbq + kbx;
+    const int2 q2_packed = make_int2(get_int_b2(bq2->qs, iqs + 0), get_int_b2(bq2->qs, iqs + 1));
+    const uint16_t* q2 = (const uint16_t*) &q2_packed;
+    const int ls0 = bq2->scales[iqs / 2] & 0x0F;
+    const int ls1 = bq2->scales[iqs / 2] >> 4;
+    int sumi0 = 0, sumi1 = 0;
+#pragma unroll
+    for (int l0 = 0; l0 < 8; l0 += 2) {
+        const uint2 grid_pos = grid[q2[l0 / 2] & 0x1FF];
+        const int u0 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 0);
+        const int u1 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 1);
+        int& acc = l0 < 4 ? sumi0 : sumi1;
+        if constexpr (SG == 1) {
+            const int s = unpack_ksigns((uint8_t) (q2[l0 / 2] >> 9));
+            const int m0 = nib_mask(s & 0xF), m1 = nib_mask(s >> 4);
+            const int gl = (int) grid_pos.x, gh = (int) grid_pos.y;
+            acc = ggml_cuda_dp4a(gl ^ m0, u0, acc);
+            acc = ggml_cuda_dp4a(gh ^ m1, u1, acc);
+            acc -= ggml_cuda_dp4a(m1, u1, ggml_cuda_dp4a(m0, u0, 0));
+        } else {
+            const int signs = unpack_ksigns((uint8_t) (q2[l0 / 2] >> 9));
+            const int signs0 = __vcmpne4(signs & 0x08040201, 0);
+            const int grid_l = __vsub4(grid_pos.x ^ signs0, signs0);
+            const int signs1 = __vcmpne4(signs & 0x80402010, 0);
+            const int grid_h = __vsub4(grid_pos.y ^ signs1, signs1);
+            acc = ggml_cuda_dp4a(grid_l, u0, acc);
+            acc = ggml_cuda_dp4a(grid_h, u1, acc);
+        }
+    }
+    const int sumi = (sumi0 * ls0 + sumi1 * ls1 + (sumi0 + sumi1) / 2) / 4;
+    const float d = __half2float(bq2->d) * __low2float(bq8_1[iqs / 2].ds);
+    return d * sumi;
+} };
 
 constexpr int LDS_RB = 64;    // gate/up rows per block (4 R2 passes of 16)
 constexpr int LDS_NT = 4;     // entries whose activations sit in LDS at once
@@ -6167,6 +6211,10 @@ bool gfx1151_exp8(int dev) {
 #endif
 }
 int g_exp_mode = -1;   // native_expert_set_mode (the bench); -1 = STRATA_EXP_MODE, else the card's default
+int exp_env() {        // set explicitly on the command line/env: gates the opt-in LDS path for gu type 17
+    static const int v = [] { const char* p = std::getenv("STRATA_EXP_MODE"); return p ? std::atoi(p) : -1; }();
+    return v;
+}
 int exp_mode() {
     static const int m = [] { const char* v = std::getenv("STRATA_EXP_MODE"); return v ? std::atoi(v) : -1; }();
     if (g_exp_mode >= 0) return g_exp_mode;
@@ -6415,12 +6463,16 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     if (g_exp_phase != 2 && !gs_done) {
 #endif
 #if STRATA_EXP_LAYOUTS
-    const bool lds_gu = !nib_layout(L) && (em0 == 5 || em0 == 6 || em0 == 7 || em0 == 8) && ((kExpLds16 && L.gu_type == 16) || L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23);
+    // iq2_xs (17) joins only when STRATA_EXP_MODE is set (or the bench drove it): its LDS dot is new, the default
+    // route stays the amd em kernels so this build's default decode path keeps its last release's bits.
+    const bool lds_gu = !nib_layout(L) && (em0 == 5 || em0 == 6 || em0 == 7 || em0 == 8) && ((kExpLds16 && L.gu_type == 16) || L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23 ||
+                    (L.gu_type == 17 && (g_exp_mode >= 0 || exp_env() >= 0)));
     if (lds_gu) {
         const dim3 gl((unsigned) ((2 * L.n_ff + LDS_RB - 1) / LDS_RB), (unsigned) cap_groups);
         const size_t sh = (size_t) LDS_NT * (size_t) (L.n_embd / 32) * sizeof(block_q8_1);
         switch (L.gu_type) {
             case 16: if (em0 >= 7) native_gu_lds_kernel<16, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<16, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<16, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
+            case 17: if (em0 >= 7) native_gu_lds_kernel<17, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<17, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<17, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
             case 18: if (em0 >= 7) native_gu_lds_kernel<18, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<18, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<18, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
             case 21: if (em0 >= 7) native_gu_lds_kernel<21, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<21, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<21, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
             case 23: if (em0 >= 7) native_gu_lds_kernel<23, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<23, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
