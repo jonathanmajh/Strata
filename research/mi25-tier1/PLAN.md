@@ -110,3 +110,8 @@ Raw numbers and cross-references: `bench/results/2026-11-10-mi25-tier2/README.md
 - gfx900 build tree lives at `build-gfx900/` (rocm 7.14 wheels from /opt/venv's
   `_rocm_sdk_devel`); the recipe is in the session notes, the parity/bench harness targets
   built clean (`native_grouped_parity: 0 failures`).
+- **`STRATA_EXP_MODE=2` (the tier-1 prefill hint), measured on top of the adopted CPU share:
+  no case.** 2 rounds, 4 server starts; chat1/chat2/long prompt medians land within the
+  A/B noise, and round 1 went the other way on two cells. Not adopted; the default path
+  stays. Numbers: `bench/results/2026-11-10-mi25-tier2/README.md` (share-only vs
+  share+EXP_MODE=2 table).

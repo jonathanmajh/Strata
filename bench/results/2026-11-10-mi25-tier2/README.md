@@ -28,6 +28,28 @@ Limits: 2 rounds per arm (the win on the long prompt is the size tier-1 also mea
 so both rounds moving the same way makes it hard to lose to noise, but 6+-round
 numbers this size were not produced); the giant 262k prompts were not re-run.
 
+## Item: `STRATA_EXP_MODE=2` on top of the CPU share (not adopted)
+
+The tier-1 sweep noticed a prefill hint on this arm (78.6 vs 56.5 tok/s) that was never
+confirmed. After adopting the share, ran the same 2-round A/B with both arms on the
+adopted production stack (`STRATA_SPLIT_OVERLAP=1` + `STRATA_PREFILL_CPU_SHARE=auto`;
+executor: same protocol):
+
+| median | share only | share + EXP_MODE=2 |
+|---|---|---|
+| chat0 decode/prompt | 36.8 / 45.9 | 37.9 / 45.7 |
+| chat1 decode/prompt | 17.6 / 37.6 | 20.9 / 42.1 |
+| chat2 decode/prompt | 20.5 / 42.0 | 20.8 / 44.7 |
+| long decode/prompt  | 21.1 / 92.8 | 21.4 / 96.2 |
+
+Round 0 went 7/7 for the EXP_MODE arm; round 1 went the other way on two cells (chat2
+decode 17.5 vs 20.8, long prompt 53.9 vs 58.8) — the long cell swings 126.9 to 58.8 for
+A and 138.5 to 53.9 for B across rounds, so both arms occupy the same range. Medians favor the arm by at most
+15-20% on cells that were a tie in tier-1, and nothing here beats the noise floor of
+2 rounds. Not adopted: the default (implicit mode 7 on this gfx906-compat build) is
+kept, per the tier-1 read. If someone wants it, raise the rounds to 6 first; the
+counter-argument is that mode 7 measured faster down than every alternative.
+
 ## Finding: the GSQ-RCO IQ2_XS set has no iq2_xs gate/up rows
 
 The planned iq2_xs gate/up code path (gu type 17) never engages for this model: all
