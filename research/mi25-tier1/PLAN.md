@@ -89,3 +89,24 @@ env `STRATA_COMPONENTS_DIR=/data/components`. Full tables and per-request rows:
 - The `--spec` arm stays deferred: the live drafter here is DFlash2, whose window cut is
   governed by `--draft-conf`, not `--spec`.
 - rocBLAS calibration table (Tier-1 item 4) needs a CMake build on the box; not started.
+
+## Tier-2 outcome (2026-11-10, later)
+
+Raw numbers and cross-references: `bench/results/2026-11-10-mi25-tier2/README.md`.
+
+- **Item 7 came in as a plain env arm instead of a code change**: the engine already gates
+  the CPU share per arch family; on HIP + layer split nothing turns it on, but setting
+  `STRATA_PREFILL_CPU_SHARE=auto` engages it as-is (prefill.cpp:3004). With the explicit
+  arm the 2-round A/B won every median — long prompt 91.8 vs 61.4 tok/s, decode unchanged,
+  no hangs — so the code-level gate was never written. Adopted in compose.
+- **Item 6 struck for now**: `STRATA_IO_PF_SCHED` only exercises the file tier, and the
+  resident config holds 94-99.9% cache hits; the budget would measure a path this workload
+  barely enters. Revisit only if the config loses residency.
+- **Item 5's iq2_xs gate/up route** (gu type 17): implemented, bitwise-parity-clean,
+  default-inert (commit 0b3fdcf0) — and dead code for this model: every expert layer of the
+  GSQ-RCO IQ2_XS set carries iq2_s / iq2_xxs / iq1_m gate/up with q2_0 down (all 47 shard-1
+  layers probed with native_expert_bench; shard 2 holds no expert tensors). The name of the
+  pack and its gate/up formats are not the same thing.
+- gfx900 build tree lives at `build-gfx900/` (rocm 7.14 wheels from /opt/venv's
+  `_rocm_sdk_devel`); the recipe is in the session notes, the parity/bench harness targets
+  built clean (`native_grouped_parity: 0 failures`).
