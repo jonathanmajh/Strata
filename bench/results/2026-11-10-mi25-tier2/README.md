@@ -28,6 +28,31 @@ Limits: 2 rounds per arm (the win on the long prompt is the size tier-1 also mea
 so both rounds moving the same way makes it hard to lose to noise, but 6+-round
 numbers this size were not produced); the giant 262k prompts were not re-run.
 
+## Item: the rocBLAS solution table (made, not adopted)
+
+Built the calibration path for the wave64 build: the gfx906-compat cmake backend now discovers
+rocBLAS and sets `STRATA_ROCBLAS_AVAILABLE`, compiles the same loader as the gfx103x builds, and
+creates the `tune_rocblas` tool. The sweep ran on the MI25s against rocBLAS 5.5.0.9811f2ea52
+(`tune_rocblas --tuning-out tools/hip/gfx900-rocblas-5.5.0.9811f2ea52.txt`): 112 rows, 101 with a
+faster solution — 1.05x-12x on the dense shapes (the N=4/N=1 router shapes ~6x and ~12x at
+T=4096, the wide projections 1.4-1.8x at T<=1024). Raw output kept beside the sweep log
+(sweep.log was not committed; the table is in `tools/hip/`).
+
+End-to-end however the FP16 prompt route (the only way the table engages) measured slower on this
+box than the default route: 2 alternating rounds per arm, both arms `STRATA_SPLIT_OVERLAP=1` and
+`STRATA_PREFILL_CPU_SHARE=auto`.
+
+| median | base | FP16 + table |
+|---|---|---|
+| chat0 decode/prompt | 37.2 / 43.8 | 36.5 / 45.1 |
+| chat1 decode/prompt | 20.5 / 38.9 | 20.2 / 21.1 |
+| chat2 decode/prompt | 20.9 / 41.0 | 16.9 / 45.3 |
+| long decode/prompt  | 22.5 / 82.0 | 14.3 / 50.9 |
+
+Not adopted (`STRATA_HIP_PROMPT_F16` is not set in compose; the table ships in `tools/hip/` only).
+No claim that the table is useless — measured evidence on this box is against enabling FP16; the
+table may matter on a build where the FP16 path is already the default.
+
 ## Item: `STRATA_EXP_MODE=2` on top of the CPU share (not adopted)
 
 The tier-1 sweep noticed a prefill hint on this arm (78.6 vs 56.5 tok/s) that was never

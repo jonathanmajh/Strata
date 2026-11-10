@@ -125,6 +125,26 @@ Notes:
 
 ## What is measured where
 
+## A rocBLAS table made on the MI25s (not a default)
+
+`tools/hip/gfx900-rocblas-5.5.0.9811f2ea52.txt` is the solution table of the prompt path's FP16-out
+GEMMs for one build of rocBLAS (5.5.0.9811f2ea52, the gfx900 wheels this image was validated with;
+112 rows, 101 shapes whose default kernel was beaten, gains from 1.05x to ~12x on the tiny router
+shapes, by `tune_rocblas` on 2026-11-10). It loads only through `STRATA_ROCBLAS_TUNING`, under the
+same rule as the gfx1030 tables: the card's architecture and the full version string must match, and
+only when the FP16 prompt route is on. The wave64 build compiles the loader now (the table calls are
+behind `STRATA_ROCBLAS_AVAILABLE`, set by the cmake backend for gfx906-compat builds since this
+commit); without the env the engine never opens the file.
+
+`STRATA_HIP_PROMPT_F16=1` alone is the lever that switches the prompt's 16-bit GEMMs to FP16; the
+numbers change (FP16 rounding of each GEMM's output). On this box the full launch measured slower
+end to end than the default (two alternating rounds per arm, `STRATA_PREFILL_CPU_SHARE=auto` matched
+on both sides): the 6,345-token long prompt read at 50.9 vs the base's 82.0 tok/s and decode went
+14.3 vs 22.5, with the short chats a wash. It is not in compose; the FP16 route and the table stay
+opt-in for anyone who wants to test them. Raw rows: `bench/results/2026-11-10-mi25-tier2/README.md`.
+
+## What is measured where
+
 Vega 10 numbers so far: one historical engine log at 39.9 prompt / 31.6 decode tok/s on one MI25 (0.1.39),
 the #4982 table on a Vega 64 (14-16 tok/s decode at 8GB card, experts from RAM), and none on 2x MI25 yet.
 If you benchmark this image, follow docs/BENCHMARK_PROTOCOL.md and note the expert-cache hit rate with your
