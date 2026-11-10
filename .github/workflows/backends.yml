@@ -9,39 +9,10 @@ name: Backend compile checks
 # llama.cpp (ggml) comes at the commit pinned in setup.py (LLAMA_CPP_COMMIT), the same one the release builds use.
 # Architectures are fewer than the release package's (compile time); the flags that decide which sources and defines are built are the release's.
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/backends.yml
-      - CMakeLists.txt
-      - CMakePresets.json
-      - cmake/**
-      - src/**
-      - include/**
-      - third_party/**
-      - sycl/**
-      - metal/**
-      - setup.py
-      - packaging/build_cuda_linux.sh
-      - packaging/build_hip_linux.sh
-      - packaging/build_sycl_linux.sh
-  pull_request:
-    paths:
-      - .github/workflows/backends.yml
-      - CMakeLists.txt
-      - CMakePresets.json
-      - cmake/**
-      - src/**
-      - include/**
-      - third_party/**
-      - sycl/**
-      - metal/**
-      - setup.py
-      - packaging/build_cuda_linux.sh
-      - packaging/build_hip_linux.sh
-      - packaging/build_sycl_linux.sh
-  workflow_dispatch:
+  workflow_dispatch: null
 
 permissions:
   contents: read

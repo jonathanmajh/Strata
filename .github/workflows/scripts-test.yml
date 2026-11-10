@@ -1,11 +1,9 @@
 name: Scripts test
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  pull_request:
-    paths:
-      - '.github/scripts/**'
-      - '.github/workflows/intake.yml'
-      - '.github/workflows/reopen.yml'
+  workflow_dispatch: null
 
 permissions:
   contents: read

@@ -5,37 +5,10 @@ name: Config snapshot
 # downloaded or run on a GPU.  Windows and Linux must give byte-identical output, so both run.  A change that moves what users
 # get has to update the golden files in the same commit (STRATA_SNAPSHOT_UPDATE=1 python -m pytest tests/snapshot, see tests/snapshot/README.md).
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/snapshot.yml
-      - tests/snapshot/**
-      - serve/**
-      - strata_cli/**
-      - strata_control/**
-      - setup.py
-      - strata.py
-      - requirements*.txt
-      - apps/host/server/**
-      - apps/host/package*.json
-      - packaging/**
-      - tools/check
-  pull_request:
-    paths:
-      - .github/workflows/snapshot.yml
-      - tests/snapshot/**
-      - serve/**
-      - strata_cli/**
-      - strata_control/**
-      - setup.py
-      - strata.py
-      - requirements*.txt
-      - apps/host/server/**
-      - apps/host/package*.json
-      - packaging/**
-      - tools/check
-  workflow_dispatch:
+  workflow_dispatch: null
 
 permissions:
   contents: read

@@ -3,11 +3,10 @@ name: Title area
 # Checks that a pull request or issue title starts with its area: [Engine], [GUI], [TUI], [Benchmark], [Docs] or [Other].
 # It reads the title only: no checkout, no labels, no comments, no write access.
 
+# Disabled in this fork: only the gfx900 image builder (docker-gfx900.yml) runs here.
+# Kept as manual-trigger-only so GitHub never fires it automatically.
 on:
-  pull_request:
-    types: [opened, edited, reopened, synchronize]
-  issues:
-    types: [opened, edited, reopened]
+  workflow_dispatch: null
 
 permissions: {}
 
