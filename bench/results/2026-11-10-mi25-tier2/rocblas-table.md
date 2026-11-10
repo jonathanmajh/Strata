@@ -266,6 +266,33 @@ tier looks in that exact window, not on the arm. Consistent hangs track per atte
 
 Exactly what survived: 1 A pass and 1 B pass. Not 2x.
 
+## Size sweep (2026-11-10 late evening)
+
+Driver `/tmp/run-sweep.sh`, one pass per arm per cell, same engine, same tier-1+2 stack,
+alternating arm order across cells (16k: A then B; 64k: B then A; 128k: A then B; 262k:
+B then A). Prompt sizes (words → real token counts from the timings block):
+
+| cell | A (base) | B (FP16 + table) | Δ (B − A) |
+|---|---|---|---|
+| 16,904 tok | 80.6 | 129.6 | **+49.0 (+60.8%)** |
+| 68,990 tok | 193.0 | 177.2 | −15.8 (−8.2%) |
+| 137,759 tok | **aborted** (stall at token 137,752, #29 file-tier watchdog) | 245.4 | A unrun |
+| 258,363 tok | 231.0 (second pass; first: 250.0) | 241.7 (second pass; first: 266.1) | +10.7 / +16.1 |
+
+Aggregating the two 262k passes per arm: A median 240.5, B median 253.9, B +13.4 tok/s
+(+5.6%). A attempts this session: two 262k passes succeeded, one from-scratch attempt
+aborted; the 128k pass aborted on its single attempt after 113 s of silence (file-tier
+busy-sampling strike again, not arm-specific).
+
+**The honest read.** The effect is positive on 3 of 4 live cells and negative on the 64k
+cell, max read-across magnitude ~+10%. That is inside a wide run-to-run spread — the same
+arm across sizes stretched from 177 to 266 tok/s in this session. The only two
+conclusions that survived every run: (1) the table loads and the loader engages at every
+size when asked for it (22-26k tuned launches per 262k pass, 0-1 fallbacks per device);
+(2) the FP16+table arm never shows a VRAM penalty (<45 MiB). The rest of the effect
+size is a coin flip within the noise band per cell, with a lean toward B on very large
+prompts. Adoption remains per-site, opt-in; this sweep does not flip compose.
+
 
 ## What must not change on account of this
 

@@ -151,17 +151,17 @@ FP16 numerics change. The table ships as an opt-in note below; raw rows and the 
 log: `bench/results/2026-11-10-mi25-tier2/README.md`.
 
 **Opt-in numbers recorded on this box (this model), for anyone who wants to enable it:**
-the 262k prompt (258,363 tokens, top of this box's resident split27 config) passed once per
-arm on 2026-11-10 evening: base FP16-off read 250.0 tok/s, FP16+table read 266.1 tok/s
-(+6.5%); decode 14.6 vs 15.7 tok/s; VRAM unchanged (<45 MiB); 6.3k and 16.9k cells are in
-`bench/results/2026-11-10-mi25-tier2/README.md` (16.9k cell: +33.6 tok/s over FP16-only,
-+45.2 over the 121.4 base). One arm-failing incident was recorded on the base arm's first
-from-scratch 262k attempt (stall at token 258,356, #29; the retry and the FP16 arm both
-crossed the same position using the 600 s STRATA_WATCHDOG_IO_S allowance — the hang does
-not track the arm, it tracks how busy the file tier looks in that window). Enabling it:
+a 4-size sweep (one pass per cell, 2026-11-10 late evening) showed the sign flips with cell
+size: 16.9k tokens 80.6 -> 129.6 tok/s (+61%); 68.99k tokens 193.0 -> 177.2 (B loses 8%);
+137,759 tokens A unrun (the from-scratch stall hit the base arm; B 245.4); 258,363 tokens
+241.7-266.1 (B) vs 231.0-250.0 (A), aggregate +~5.6%. VRAM flat. One 128k attempt by A
+aborted to the #29 stall; the 262k pass works when the file-tier io-wait window (600 s)
+engages, and fails when it does not — the busy-sampling window decides, not the arm. Treat
+the sign you measure as cell-dependent; the win is not uniform. Enabling it:
 `STRATA_HIP_PROMPT_F16=1 STRATA_ROCBLAS_TUNING=/path/to/tools/hip`; the output bytes change
-(FP16 rounding). The arm-headroom on from-scratch 262k prompts is worth guarding for, so
-run a needle-check before adopting on a live service.
+(FP16 rounding). A needle check before adopting on a live service is advisable — the
+from-scratch 262k crossing (~258,300 tokens) is unreliable on this box (two stalls recorded
+in the base arm's attempts this week; the FP16 arm passed both its attempts).
 
 ## What is measured where
 

@@ -92,14 +92,14 @@ What survived the retest:
   in at 7.3 tok/s, and C round-1 chat1 at 16.2, B round-0/1 chat0 decode 20.1/35.0
   against r2/r3's 36.8/37.7. They are flagged, not used to draw conclusions.
 
-**Adoption: not flipped in compose.** 262k-row outcome (one successful pass per arm,
-2026-11-10): FP16-off read 250.0 tok/s (258,363 tokens, decode 14.6) vs FP16+table
-266.1 tok/s (decode 15.7), VRAM unchanged, 22.6k/12.2k tuned launches with 1 fallback per
-device. The 6.5% margin is consistent in sign but not wide; the 16,904-token cell
-showed +33.6 tok/s over FP16-only. `docs/AMD_GFX900.md` carries the opt-in numbers. No
-compose change: the FP16 numerics change wants a per-site owner decision plus the
-from-scratch 262k stall watch on this box. The build gained a plumbing path; no config
-default was touched. Sweep raw rows: `rocblas-sweep.log` (not committed).
+**Adoption: not flipped in compose.** 262k-row outcome (2026-11-10), aggregated after a
+4-size sweep, one pass per arm per cell: 16,904 tok A 80.6 vs B 129.6; 68,990 tok A 193.0
+vs B 177.2 (B loses); 137,759 tok A aborted (stall, #29) vs B 245.4; 258,363 tok: A 231.0/250.0
+(passes) vs B 241.7/266.1 (passes). Aggregate 262k: A 240.5 vs B 253.9 (+5.6%). Sign flips
+with cell size; effect within the run-to-run band; VRAM unchanged; table loads everywhere
+it was asked to load. `docs/AMD_GFX900.md` carries the opt-in note; compose untouched.
+The 6.3k and 16.9k medians from earlier (C vs A: +30/+21) stand; the B vs C isolates the
++33.6 at 16.9k.
 
 ### What would settle the adoption question
 
