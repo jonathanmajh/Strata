@@ -88,7 +88,12 @@ env `STRATA_COMPONENTS_DIR=/data/components`. Full tables and per-request rows:
   503; the jsonl marks it implicitly, the README documents it; no number was invented.
 - The `--spec` arm stays deferred: the live drafter here is DFlash2, whose window cut is
   governed by `--draft-conf`, not `--spec`.
-- rocBLAS calibration table (Tier-1 item 4) needs a CMake build on the box; not started.
+- rocBLAS calibration table (Tier-1 item 4): build path done, calibration done, end-to-end
+  slower — not adopted, FP16 route stays off. The `gfx906` cmake backend now compiles the
+  `STRATA_ROCBLAS_AVAILABLE` consumer and `tune_rocblas`; the table made on this box is
+  `tools/hip/gfx900-rocblas-5.5.0.9811f2ea52.txt` (111 rows tuned of 112). Details:
+  `docs/AMD_GFX900.md` ("A rocBLAS table made on the MI25s"), nums in
+  `bench/results/2026-11-10-mi25-tier2/README.md`.
 
 ## Tier-2 outcome (2026-11-10, later)
 
