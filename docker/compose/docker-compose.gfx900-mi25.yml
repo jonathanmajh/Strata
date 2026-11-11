@@ -4,7 +4,7 @@
 #   IQ2_XS @ 256k:  --resident-budget-gib 16 --layer-split 27   (260 tok/s prefill, no hangs)
 #   IQ1_M  @ 256k:  the Coder pack's own preset (the 262k needle sweep ran without extra flags)
 #
-# Needs the image ghcr.io/jonathanmajh/strata:gfx900-0.1.58 (built with Dockerfile.gfx900) and the amdgpu
+# Needs the image ghcr.io/jonathanmajh/strata:gfx900-0.1.59.1 (built with Dockerfile.gfx900) and the amdgpu
 # kernel driver on the host. STRATA_EXPERIMENTAL_GFX900=1 stays on (it is already set below): the image's
 # engine is built for gfx900, and the flag lets the Terminal's card checks pass.
 #
@@ -18,7 +18,7 @@
 # CONTEXT=256k is the trained limit; the sweep ran with ~272k headroom for the harness, not needed for chat.
 services:
   strata:
-    image: ${STRATA_IMAGE:-ghcr.io/jonathanmajh/strata:gfx900-0.1.58}
+    image: ${STRATA_IMAGE:-ghcr.io/jonathanmajh/strata:gfx900-0.1.59.1}
     container_name: strata
     restart: unless-stopped
     ports:
