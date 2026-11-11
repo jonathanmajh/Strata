@@ -7,10 +7,10 @@ name: Docker image gfx900
 #   ghcr.io/jonathanmajh/strata:gfx900-<short-sha>     the same build, immutable, for rolling back
 # Pulling needs the package to be Public (or a token with read:packages).
 #
-# The push logins with the repo secret CR_TOKEN (a classic PAT with write:packages): the ghcr
-# package `strata` predates this workflow and has no repo linked, so a bare GITHUB_TOKEN is
-# denied (permission_denied: write_package). If the package is ever deleted, read the linked
-# repo is enough again and CR_TOKEN can go back to a GITHUB_TOKEN.
+# The push logins with the built-in GITHUB_TOKEN: the ghcr package `strata` is linked to this
+# repository (owner-side setting, 2026-11-11), and the workflow declares `packages: write`
+# below, so a repo-scoped token can publish. CR_TOKEN (a classic PAT) is retired from this
+# workflow; it served the pre-link era when the package was not connected to the repo.
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.CR_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build the image
         uses: docker/build-push-action@v6
