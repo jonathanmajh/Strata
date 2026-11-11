@@ -145,23 +145,28 @@ per arm, Latin arm ordering, warm-up requests, VRAM sampled): the FP16 route was
 on the same workload — long prompts read at 142.6 vs 121.4 tok/s (16,904 tokens) and 99.3 vs
 69.2 (6,345 tokens); chat cells a wash; VRAM unchanged (B arm ran ~34-44 MiB heavier, no
 resident-budget effect). Adding the table on top of FP16 (B) measured +33.6 tok/s over
-FP16-only on the 16,904-token cell (176.2 vs 142.6) and a wash on chats. The FP16 route is
-still not in compose: adoption needs a 262k prompt run and the owner's explicit go for the
-FP16 numerics change. The table ships as an opt-in note below; raw rows and the full retest
-log: `bench/results/2026-11-10-mi25-tier2/README.md`.
+FP16-only on the 16,904-token cell (176.2 vs 142.6) and a wash on chats. The owner opted in for
+this compose (`docker-compose.gfx900-mi25.yml`, 2026-11-10): `STRATA_HIP_PROMPT_F16=1`, overridable
+with `STRATA_HIP_PROMPT_F16=0`. Raw rows and the full retest log:
+`bench/results/2026-11-10-mi25-tier2/README.md`.
 
-**Opt-in numbers recorded on this box (this model), for anyone who wants to enable it:**
-a 4-size sweep (one pass per cell, 2026-11-10 late evening) showed the sign flips with cell
-size: 16.9k tokens 80.6 -> 129.6 tok/s (+61%); 68.99k tokens 193.0 -> 177.2 (B loses 8%);
+**On in this compose since 2026-11-10 (call of the owner, for this box only):**
+`STRATA_HIP_PROMPT_F16=1` + `STRATA_ROCBLAS_TUNING=/opt/strata/tuning` (a read-only bind of
+`tools/hip`) + `STRATA_HIP_PROMPT_F16` and the tuning variable overridable in `.env`.
+The FP16 route is active from the first request; the table engages once the image is
+rebuilt from this commit (the published 0.1.58 component carries no loader and keeps to its
+default kernels and defaults; one line at start confirms the state either way). A 4-size
+sweep (one pass per cell, 2026-11-10 late evening) showed the sign flips with cell size:
+16.9k tokens 80.6 -> 129.6 tok/s (+61%); 68.99k tokens 193.0 -> 177.2 (B loses 8%);
 137,759 tokens A unrun (the from-scratch stall hit the base arm; B 245.4); 258,363 tokens
 241.7-266.1 (B) vs 231.0-250.0 (A), aggregate +~5.6%. VRAM flat. One 128k attempt by A
 aborted to the #29 stall; the 262k pass works when the file-tier io-wait window (600 s)
 engages, and fails when it does not — the busy-sampling window decides, not the arm. Treat
-the sign you measure as cell-dependent; the win is not uniform. Enabling it:
-`STRATA_HIP_PROMPT_F16=1 STRATA_ROCBLAS_TUNING=/path/to/tools/hip`; the output bytes change
-(FP16 rounding). A needle check before adopting on a live service is advisable — the
-from-scratch 262k crossing (~258,300 tokens) is unreliable on this box (two stalls recorded
-in the base arm's attempts this week; the FP16 arm passed both its attempts).
+the sign you measure as cell-dependent; the win is not uniform. The output bytes change
+(FP16 rounding), which is the one real risk of the change; a needle check before resuming
+long sessions on a live service is advisable. The from-scratch 262k crossing (~258,300
+tokens) is unreliable on this box (two stalls recorded in the base arm's attempts this
+week; the FP16 arm passed both its attempts).
 
 ## What is measured where
 

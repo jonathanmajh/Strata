@@ -49,8 +49,26 @@ services:
       # were flat to slightly better; decode unchanged; no hangs. The idle host CPU takes the
       # streamed experts of prompt chunks up to 3072 tokens.
       STRATA_PREFILL_CPU_SHARE: auto
+      # A/B'd on this box 2026-11-10, context-size sweep (16k/64k/128k/262k, one pass per cell,
+      # docs/AMD_GFX900.md): FP16-out prompt GEMMs are OFF here by default upstream, and this is
+      # where they win their bulk. 16,904-token cell 80.6 -> 129.6 tok/s, 16,904-token median over
+      # 4 rounds 99.3 (vs 69.2 base); 258,363-token cell 250.0 vs 231.0/266.1 vs 241.7 tok/s
+      # (+5.6% aggregate over two passes/arm); the 64k cell flipped against it (-8%), the 137k-cell
+      # pass aborted on the file-tier stall on the base arm. The output bytes change (FP16 rounding
+      # of the dense FP16 GEMMs). Set STRATA_HIP_PROMPT_F16=0 to turn the route back off.
+      STRATA_HIP_PROMPT_F16: ${STRATA_HIP_PROMPT_F16:-1}
+      # The rocBLAS solution table measured on this box for THESE exact libraries (gfx900,
+      # rocBLAS 5.5.0.9811f2ea52, TheRock gfx900 wheels): 101 of 112 dense shapes faster,
+      # 1.05x-12x, checked bitwise. The current published 0.1.58 component predates the
+      # loader (the wave64 build compiles it since 2026-11-10) and ignores the flag silently;
+      # the table lights up on the next image build from this commit. If the table is missing
+      # or its arch/version miss the shipped library, one line is printed and the default
+      # kernels run, as before. Directory inside the container, mounted below from the repo.
+      # Set STRATA_ROCBLAS_TUNING= to point elsewhere (the engine then refuses and defaults).
+      STRATA_ROCBLAS_TUNING: ${STRATA_ROCBLAS_TUNING:-/opt/strata/tuning}
     volumes:
       - strata-data:/data                    # the model (tens of GB), presets, tuning, the key. Survives image updates.
+      - ./tools/hip:/opt/strata/tuning:ro    # the rocBLAS table + any others: read-only, the engine only loads files it recognizes
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
